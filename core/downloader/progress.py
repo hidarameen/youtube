@@ -74,6 +74,38 @@ class ProgressTracker:
                 
         except Exception as e:
             logger.error(f"❌ خطأ في تحديث التقدم: {e}")
+
+    def update_progress_with_id(self, download_id: str, d: Dict[str, Any]):
+        """تحديث التقدم باستخدام معرف قاعدة البيانات مباشرة"""
+        try:
+            with self.lock:
+                if not download_id:
+                    return
+                if download_id not in self.progress_data:
+                    self.progress_data[download_id] = ProgressInfo()
+
+                progress = self.progress_data[download_id]
+
+                if d.get('status') == 'downloading':
+                    progress.status = 'downloading'
+                    progress.downloaded_bytes = d.get('downloaded_bytes', 0)
+                    progress.total_bytes = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+                    progress.speed = d.get('speed', 0.0)
+                    progress.eta = d.get('eta', 0)
+                    if progress.total_bytes > 0:
+                        progress.progress_percent = (progress.downloaded_bytes / progress.total_bytes) * 100
+                    else:
+                        progress.progress_percent = 0.0
+                elif d.get('status') == 'finished':
+                    progress.status = 'finished'
+                    progress.progress_percent = 100.0
+                elif d.get('status') == 'error':
+                    progress.status = 'error'
+
+                progress.last_update = time.time()
+                self._cleanup_old_data()
+        except Exception as e:
+            logger.error(f"❌ خطأ في تحديث التقدم بالمعرف: {e}")
     
     def _extract_download_id(self, d: Dict[str, Any]) -> Optional[str]:
         """استخراج معرف التحميل من البيانات"""
@@ -127,7 +159,7 @@ class ProgressTracker:
                             'speed': progress.speed,
                             'eta': progress.eta,
                             'status': progress.status,
-                            'last_update': progress.last_update
+                            'last_update': progress.last_update,
                         }
                         for download_id, progress in self.progress_data.items()
                     }

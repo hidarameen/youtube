@@ -213,7 +213,7 @@ class Statistics(Base):
     network_usage = Column(Float, default=0.0)
     
     # بيانات إضافية
-    metadata = Column(JSONB, nullable=True)
+    extra_data = Column(JSONB, nullable=True)
     
     # التواريخ
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -247,7 +247,7 @@ class SystemLog(Base):
     # معلومات إضافية
     exception = Column(Text, nullable=True)
     stack_trace = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    extra_data = Column(JSONB, nullable=True)
     
     # التواريخ
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)

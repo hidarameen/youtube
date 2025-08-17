@@ -6,8 +6,8 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from aiogram import Bot, Dispatcher, types, Router
-from aiogram.filters import Command, Text
+from aiogram import Bot, Dispatcher, types, Router, F
+from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -23,6 +23,8 @@ from ..database.models import User, Download, Upload
 from ..downloader.manager import download_manager
 from .keyboards import InlineKeyboards
 from .handlers import CommandHandlers
+from sqlalchemy import select, desc
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ class TelegramBot:
         self.keyboards = InlineKeyboards()
         self.handlers = CommandHandlers()
         self._running = False
+        self._polling_task: Optional[asyncio.Task] = None
         
         # تسجيل المعالجات
         self._register_handlers()
@@ -59,7 +62,7 @@ class TelegramBot:
             
             # بدء البوت
             await self.bot.delete_webhook(drop_pending_updates=True)
-            await self.dp.start_polling(self.bot)
+            self._polling_task = asyncio.create_task(self.dp.start_polling(self.bot))
             
             self._running = True
             logger.info("✅ تم بدء بوت تلجرام بنجاح!")
@@ -75,6 +78,10 @@ class TelegramBot:
         
         try:
             logger.info("🛑 إيقاف بوت تلجرام...")
+            if self._polling_task is not None:
+                self._polling_task.cancel()
+                with contextlib.suppress(Exception):
+                    await self._polling_task
             await self.bot.session.close()
             self._running = False
             logger.info("✅ تم إيقاف بوت تلجرام بنجاح!")
@@ -99,8 +106,11 @@ class TelegramBot:
         self.router.message.register(self._system_command, Command("system"))
         
         # معالجات النصوص
-        self.router.message.register(self._handle_text, Text(startswith=".yt"))
-        self.router.message.register(self._handle_url, self._is_youtube_url)
+        self.router.message.register(self._handle_text, F.text.startswith(".yt"))
+        self.router.message.register(
+            self._handle_url,
+            F.text.regexp(r"(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be)")
+        )
         
         # معالجات Callback
         self.router.callback_query.register(self._handle_callback)
@@ -111,7 +121,6 @@ class TelegramBot:
     async def _start_command(self, message: Message):
         """معالج أمر /start"""
         try:
-            user_id = message.from_user.id
             user_name = message.from_user.first_name
             
             # إنشاء أو تحديث المستخدم في قاعدة البيانات
@@ -216,14 +225,22 @@ https://youtu.be/VIDEO_ID
     async def _status_command(self, message: Message):
         """معالج أمر /status"""
         try:
-            user_id = message.from_user.id
+            user_tg_id = message.from_user.id
             
-            # الحصول على التحميلات النشطة للمستخدم
+            # الحصول على التحميلات النشطة للمستخدم عبر ORM
             async with db_manager.get_session() as session:
-                downloads = await session.execute(
-                    "SELECT * FROM downloads WHERE user_id = :user_id AND status IN ('pending', 'downloading') ORDER BY created_at DESC LIMIT 5",
-                    {"user_id": user_id}
+                result_user = await session.execute(select(User).where(User.telegram_id == user_tg_id))
+                user = result_user.scalars().first()
+                if not user:
+                    await message.answer("📭 لا توجد تحميلات نشطة حالياً.")
+                    return
+                result = await session.execute(
+                    select(Download)
+                    .where(Download.user_id == user.id, Download.status.in_(['pending', 'downloading']))
+                    .order_by(desc(Download.created_at))
+                    .limit(5)
                 )
+                downloads = result.scalars().all()
                 
                 if not downloads:
                     await message.answer("📭 لا توجد تحميلات نشطة حالياً.")
@@ -232,10 +249,10 @@ https://youtu.be/VIDEO_ID
                 status_text = "📊 **حالة التحميلات النشطة:**\n\n"
                 
                 for download in downloads:
-                    progress_bar = self._create_progress_bar(download.progress)
+                    progress_bar = self._create_progress_bar(download.progress or 0.0)
                     status_text += f"""
 🎬 **{download.title or 'فيديو'}**
-📈 التقدم: {progress_bar} {download.progress:.1f}%
+📈 التقدم: {progress_bar} {download.progress or 0.0:.1f}%
 ⏱️ الحالة: {self._get_status_emoji(download.status)} {download.status}
 📅 التاريخ: {download.created_at.strftime('%Y-%m-%d %H:%M')}
 🔗 الرابط: {download.video_url[:50]}...
@@ -251,11 +268,12 @@ https://youtu.be/VIDEO_ID
     async def _stats_command(self, message: Message):
         """معالج أمر /stats"""
         try:
-            user_id = message.from_user.id
+            user_tg_id = message.from_user.id
             
             # الحصول على إحصائيات المستخدم
             async with db_manager.get_session() as session:
-                user = await session.get(User, user_id)
+                result_user = await session.execute(select(User).where(User.telegram_id == user_tg_id))
+                user = result_user.scalars().first()
                 if not user:
                     await message.answer("❌ لم يتم العثور على بيانات المستخدم.")
                     return
@@ -296,11 +314,12 @@ https://youtu.be/VIDEO_ID
     async def _settings_command(self, message: Message):
         """معالج أمر /settings"""
         try:
-            user_id = message.from_user.id
+            user_tg_id = message.from_user.id
             
             # الحصول على إعدادات المستخدم
             async with db_manager.get_session() as session:
-                user = await session.get(User, user_id)
+                result_user = await session.execute(select(User).where(User.telegram_id == user_tg_id))
+                user = result_user.scalars().first()
                 if not user:
                     await message.answer("❌ لم يتم العثور على بيانات المستخدم.")
                     return
@@ -339,7 +358,6 @@ https://youtu.be/VIDEO_ID
         """معالج النصوص التي تبدأ بـ .yt"""
         try:
             text = message.text
-            user_id = message.from_user.id
             
             # تحليل الأمر
             parts = text.split()
@@ -372,7 +390,6 @@ https://youtu.be/VIDEO_ID
         """معالج روابط يوتيوب"""
         try:
             url = message.text
-            user_id = message.from_user.id
             
             # عرض خيارات الجودة
             keyboard = self.keyboards.get_quality_selection(url)
@@ -389,7 +406,6 @@ https://youtu.be/VIDEO_ID
         """معالج Callback Queries"""
         try:
             data = callback.data
-            user_id = callback.from_user.id
             
             if data.startswith("quality_"):
                 # اختيار الجودة
@@ -416,13 +432,14 @@ https://youtu.be/VIDEO_ID
     async def _start_download(self, message: Message, url: str, quality: str = "720", audio_only: bool = False):
         """بدء عملية التحميل"""
         try:
-            user_id = message.from_user.id
+            # التأكد من وجود المستخدم والحصول على معرفه في قاعدة البيانات
+            user_db_id = await self._ensure_user_exists(message.from_user)
             
             # إنشاء طلب التحميل
             from ..downloader.manager import DownloadRequest
             
             request = DownloadRequest(
-                user_id=str(user_id),
+                user_id=str(user_db_id),
                 video_url=url,
                 quality=quality,
                 audio_only=audio_only
@@ -503,30 +520,30 @@ https://youtu.be/VIDEO_ID
         except Exception as e:
             logger.error(f"❌ خطأ في مراقبة التقدم: {e}")
     
-    async def _ensure_user_exists(self, user: types.User):
-        """التأكد من وجود المستخدم في قاعدة البيانات"""
+    async def _ensure_user_exists(self, user: types.User) -> str:
+        """التأكد من وجود المستخدم في قاعدة البيانات وإرجاع معرفه في قاعدة البيانات"""
         try:
             async with db_manager.get_session() as session:
-                existing_user = await session.execute(
-                    "SELECT * FROM users WHERE telegram_id = :telegram_id",
-                    {"telegram_id": user.id}
-                )
-                
-                if not existing_user:
-                    # إنشاء مستخدم جديد
+                result = await session.execute(select(User).where(User.telegram_id == user.id))
+                existing = result.scalars().first()
+                if not existing:
                     new_user = User(
                         telegram_id=user.id,
                         username=user.username,
                         first_name=user.first_name,
                         last_name=user.last_name,
-                        language="ar"
+                        language="ar",
                     )
                     session.add(new_user)
                     await session.commit()
+                    await session.refresh(new_user)
                     logger.info(f"✅ تم إنشاء مستخدم جديد: {user.id}")
-                
+                    return str(new_user.id)
+                else:
+                    return str(existing.id)
         except Exception as e:
             logger.error(f"❌ خطأ في إنشاء المستخدم: {e}")
+            return str(user.id)
     
     def _create_progress_bar(self, progress: float, width: int = 20) -> str:
         """إنشاء شريط التقدم"""
@@ -564,5 +581,4 @@ https://youtu.be/VIDEO_ID
         return any(domain in text for domain in ['youtube.com', 'youtu.be', 'youtube-nocookie.com'])
 
 
-# إنشاء نسخة عامة من البوت
-telegram_bot = TelegramBot()
+# ملاحظة: لا تنشئ مثيلاً عاماً هنا لتجنّب تفعيل التوكن أثناء الاستيراد

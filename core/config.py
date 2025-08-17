@@ -5,9 +5,8 @@ Configuration Module - إدارة الإعدادات المتقدمة
 import os
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from dataclasses import dataclass, field
-from pydantic import BaseSettings, validator
 from dotenv import load_dotenv
 
 # تحميل متغيرات البيئة
@@ -41,7 +40,7 @@ class TelegramConfig:
     bot_token: str = ""
     session_name: str = "userbot"
     max_file_size_gb: float = 2.0
-    
+
     @property
     def max_file_size_bytes(self) -> int:
         """تحويل الحجم إلى بايت"""
@@ -111,75 +110,67 @@ class SecurityConfig:
     max_login_attempts: int = 5
 
 
-class Config(BaseSettings):
-    """الإعدادات الرئيسية"""
-    
+@dataclass
+class Config:
+    """الإعدادات الرئيسية (dataclass)"""
+
     # إعدادات التطبيق
     app_name: str = "YouTube Telegram Bot"
     app_version: str = "2.0.0"
     environment: str = "development"
-    
+
     # إعدادات قاعدة البيانات
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
-    
+
     # إعدادات Redis
     redis: RedisConfig = field(default_factory=RedisConfig)
-    
+
     # إعدادات تلجرام
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
-    
+
     # إعدادات التحميل
     download: DownloadConfig = field(default_factory=DownloadConfig)
-    
+
     # إعدادات الرفع
     upload: UploadConfig = field(default_factory=UploadConfig)
-    
+
     # إعدادات الويب
     web: WebConfig = field(default_factory=WebConfig)
-    
+
     # إعدادات السجلات
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    
+
     # إعدادات التخزين المؤقت
     cache: CacheConfig = field(default_factory=CacheConfig)
-    
+
     # إعدادات الأمان
     security: SecurityConfig = field(default_factory=SecurityConfig)
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-    
-    @validator("telegram")
-    def validate_telegram_config(cls, v):
-        """التحقق من صحة إعدادات تلجرام"""
-        if not v.api_id:
-            raise ValueError("API_ID مطلوب")
-        if not v.api_hash:
-            raise ValueError("API_HASH مطلوب")
-        if not v.bot_token:
-            raise ValueError("BOT_TOKEN مطلوب")
-        return v
-    
-    def load_from_env(self):
+
+    def load_from_env(self) -> None:
         """تحميل الإعدادات من متغيرات البيئة"""
-        self.telegram.api_id = int(os.getenv("API_ID", "0"))
-        self.telegram.api_hash = os.getenv("API_HASH", "")
-        self.telegram.bot_token = os.getenv("BOT_TOKEN", "")
-        self.telegram.session_name = os.getenv("SESSION_NAME", "userbot")
-        self.telegram.max_file_size_gb = float(os.getenv("MAX_FILE_SIZE_GB", "2.0"))
-        
+        self.telegram.api_id = int(os.getenv("API_ID", str(self.telegram.api_id) or "0") or 0)
+        self.telegram.api_hash = os.getenv("API_HASH", self.telegram.api_hash)
+        self.telegram.bot_token = os.getenv("BOT_TOKEN", self.telegram.bot_token)
+        self.telegram.session_name = os.getenv("SESSION_NAME", self.telegram.session_name)
+        try:
+            self.telegram.max_file_size_gb = float(os.getenv("MAX_FILE_SIZE_GB", str(self.telegram.max_file_size_gb)))
+        except Exception:
+            pass
+
         self.database.url = os.getenv("DATABASE_URL", self.database.url)
         self.redis.url = os.getenv("REDIS_URL", self.redis.url)
-        
+
         self.web.host = os.getenv("WEB_HOST", self.web.host)
-        self.web.port = int(os.getenv("WEB_PORT", str(self.web.port)))
+        try:
+            self.web.port = int(os.getenv("WEB_PORT", str(self.web.port)))
+        except Exception:
+            pass
         self.web.secret_key = os.getenv("SECRET_KEY", self.web.secret_key)
-        
-        self.security.encryption_key = os.getenv("ENCRYPTION_KEY", "")
-        self.security.jwt_secret = os.getenv("JWT_SECRET", "")
-    
-    def create_directories(self):
+
+        self.security.encryption_key = os.getenv("ENCRYPTION_KEY", self.security.encryption_key)
+        self.security.jwt_secret = os.getenv("JWT_SECRET", self.security.jwt_secret)
+
+    def create_directories(self) -> None:
         """إنشاء المجلدات المطلوبة"""
         directories = [
             self.download.download_dir,
@@ -189,12 +180,12 @@ class Config(BaseSettings):
             Path("logs"),
             Path("temp"),
             Path("cache"),
-            Path("downloads")
+            Path("downloads"),
         ]
-        
+
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """تحويل الإعدادات إلى قاموس"""
         return {
@@ -205,24 +196,24 @@ class Config(BaseSettings):
                 "api_id": self.telegram.api_id,
                 "api_hash": self.telegram.api_hash,
                 "session_name": self.telegram.session_name,
-                "max_file_size_gb": self.telegram.max_file_size_gb
+                "max_file_size_gb": self.telegram.max_file_size_gb,
             },
             "database": {
                 "url": self.database.url,
-                "pool_size": self.database.pool_size
+                "pool_size": self.database.pool_size,
             },
             "redis": {
                 "url": self.redis.url,
-                "max_connections": self.redis.max_connections
+                "max_connections": self.redis.max_connections,
             },
             "web": {
                 "host": self.web.host,
                 "port": self.web.port,
-                "debug": self.web.debug
-            }
+                "debug": self.web.debug,
+            },
         }
-    
-    def save_to_file(self, file_path: Path):
+
+    def save_to_file(self, file_path: Path) -> None:
         """حفظ الإعدادات إلى ملف"""
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)

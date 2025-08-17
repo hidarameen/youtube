@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 import yt_dlp
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from ..config import config
 from ..database.manager import db_manager
@@ -167,7 +168,7 @@ class DownloadManager:
             await self._update_download_status(download_id, "downloading")
             
             # تحميل الفيديو
-            result = await self._download_with_yt_dlp(request)
+            result = await self._download_with_yt_dlp(download_id, request)
             
             if result.success:
                 # تحديث قاعدة البيانات
@@ -187,7 +188,7 @@ class DownloadManager:
             logger.error(f"❌ خطأ في معالجة التحميل {download_id}: {e}")
             await self._update_download_error(download_id, str(e))
     
-    async def _download_with_yt_dlp(self, request: DownloadRequest) -> DownloadResult:
+    async def _download_with_yt_dlp(self, download_id: str, request: DownloadRequest) -> DownloadResult:
         """تحميل باستخدام yt-dlp"""
         try:
             # إعداد خيارات التحميل
@@ -195,11 +196,16 @@ class DownloadManager:
             
             # تحميل الفيديو
             loop = asyncio.get_running_loop()
+            def hook(d):
+                # تحديث التقدم باستخدام معرف التحميل من قاعدة البيانات
+                self.progress_tracker.update_progress_with_id(download_id, d)
+
             result = await loop.run_in_executor(
                 self.executor,
                 self.yt_dlp_wrapper.download_video,
                 request.video_url,
-                ydl_opts
+                ydl_opts,
+                hook,
             )
             
             return result
@@ -315,8 +321,13 @@ class DownloadManager:
                 async with db_manager.get_session() as session:
                     download = await session.get(Download, download_id)
                     if download and download.status == "downloading":
-                        download.progress = progress
-                        download.downloaded_size = int(progress * (download.file_size or 0) / 100)
+                        download.progress = float(progress.get('progress_percent', 0.0))
+                        # حفظ القيم إذا كانت متاحة
+                        downloaded_bytes = int(progress.get('downloaded_bytes') or 0)
+                        total_bytes = int(progress.get('total_bytes') or 0)
+                        download.downloaded_size = downloaded_bytes
+                        if total_bytes and not download.file_size:
+                            download.file_size = total_bytes
                         await session.commit()
                         
         except Exception as e:
@@ -369,21 +380,21 @@ class DownloadManager:
         """الحصول على التحميلات النشطة"""
         try:
             async with db_manager.get_session() as session:
-                downloads = await session.execute(
-                    "SELECT * FROM downloads WHERE status = 'downloading'"
+                result = await session.execute(
+                    select(Download).where(Download.status == 'downloading')
                 )
-                
+                downloads = result.scalars().all()
                 return [
                     {
-                        "id": str(download.id),
-                        "user_id": str(download.user_id),
-                        "video_url": download.video_url,
-                        "progress": download.progress,
-                        "file_size": download.file_size,
-                        "title": download.title,
-                        "created_at": download.created_at.isoformat(),
+                        "id": str(d.id),
+                        "user_id": str(d.user_id),
+                        "video_url": d.video_url,
+                        "progress": d.progress,
+                        "file_size": d.file_size,
+                        "title": d.title,
+                        "created_at": d.created_at.isoformat(),
                     }
-                    for download in downloads
+                    for d in downloads
                 ]
                 
         except Exception as e:
