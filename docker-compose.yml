@@ -3,31 +3,67 @@ version: "3.8"
 services:
   app:
     build: .
+    container_name: youtube-telegram-bot
+    restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
       - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./cache:/app/cache
+      - ./temp:/app/temp
     environment:
       - DATABASE_URL=postgresql://user:password@postgres:5432/youtube_bot
       - REDIS_URL=redis://redis:6379
     depends_on:
       - postgres
       - redis
+    networks:
+      - bot-network
 
   postgres:
     image: postgres:15-alpine
+    container_name: youtube-telegram-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: youtube_bot
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - bot-network
 
   redis:
     image: redis:7-alpine
+    container_name: youtube-telegram-redis
+    restart: unless-stopped
     volumes:
       - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - bot-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: youtube-telegram-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - app
+    networks:
+      - bot-network
 
 volumes:
   postgres_data:
   redis_data:
+
+networks:
+  bot-network:
+    driver: bridge
