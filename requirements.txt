@@ -1,3 +1,63 @@
+# Core Dependencies
 telethon>=1.35.0,<2.0
 yt-dlp>=2024.11.4,<2026.0
 python-dotenv>=1.0.1,<2.0
+
+# Web Framework & API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+python-multipart>=0.0.6
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+psycopg2-binary>=2.9.0
+redis>=5.0.0
+motor>=3.3.0
+
+# Background Tasks
+celery>=5.3.0
+flower>=2.0.0
+
+# File Processing
+aiofiles>=23.2.0
+python-ffmpeg>=2.0.4
+pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Network & HTTP
+aiohttp>=3.9.0
+httpx>=0.25.0
+requests>=2.31.0
+
+# Security & Encryption
+cryptography>=41.0.0
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+
+# Monitoring & Logging
+prometheus-client>=0.19.0
+structlog>=23.2.0
+sentry-sdk[fastapi]>=1.38.0
+
+# Utilities
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dateutil>=2.8.2
+pytz>=2023.3
+click>=8.1.0
+rich>=13.7.0
+
+# Development
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.11.0
+isort>=5.12.0
+flake8>=6.1.0
+mypy>=1.7.0
+
+# Performance
+uvloop>=0.19.0
+orjson>=3.9.0
+ujson>=5.8.0
