@@ -6,8 +6,8 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from aiogram import Bot, Dispatcher, types, Router
-from aiogram.filters import Command, Text
+from aiogram import Bot, Dispatcher, types, Router, F
+from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -106,8 +106,11 @@ class TelegramBot:
         self.router.message.register(self._system_command, Command("system"))
         
         # معالجات النصوص
-        self.router.message.register(self._handle_text, Text(startswith=".yt"))
-        self.router.message.register(self._handle_url, self._is_youtube_url)
+        self.router.message.register(self._handle_text, F.text.startswith(".yt"))
+        self.router.message.register(
+            self._handle_url,
+            F.text.regexp(r"(?:https?://)?(?:www\.)?(?:youtube\.com|youtu\.be)")
+        )
         
         # معالجات Callback
         self.router.callback_query.register(self._handle_callback)
@@ -578,5 +581,4 @@ https://youtu.be/VIDEO_ID
         return any(domain in text for domain in ['youtube.com', 'youtu.be', 'youtube-nocookie.com'])
 
 
-# إنشاء نسخة عامة من البوت
-telegram_bot = TelegramBot()
+# ملاحظة: لا تنشئ مثيلاً عاماً هنا لتجنّب تفعيل التوكن أثناء الاستيراد
