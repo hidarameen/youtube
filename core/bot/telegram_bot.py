@@ -353,6 +353,40 @@ https://youtu.be/VIDEO_ID
         except Exception as e:
             logger.error(f"❌ خطأ في أمر settings: {e}")
             await message.answer("❌ حدث خطأ، يرجى المحاولة مرة أخرى.")
+
+    async def _admin_command(self, message: Message):
+        """معالج أمر /admin <command> [args...] يوجه إلى CommandHandlers"""
+        try:
+            parts = (message.text or "").split()
+            # parts[0] هو /admin
+            subcmd = parts[1].lower() if len(parts) > 1 else ""
+            args = parts[2:] if len(parts) > 2 else []
+            if not subcmd:
+                await message.answer("❌ استخدم: /admin <users|system|maintenance|logs|health> [args]")
+                return
+            result = await self.handlers.handle_admin_command(message.from_user.id, subcmd, args)
+            await message.answer(result)
+        except Exception as e:
+            logger.error(f"❌ خطأ في أمر admin: {e}")
+            await message.answer("❌ حدث خطأ في أمر الإدارة")
+
+    async def _users_command(self, message: Message):
+        """معالج أمر /users يوجه لأمر إدارة users"""
+        try:
+            result = await self.handlers.handle_admin_command(message.from_user.id, "users", [])
+            await message.answer(result)
+        except Exception as e:
+            logger.error(f"❌ خطأ في أمر users: {e}")
+            await message.answer("❌ حدث خطأ أثناء جلب المستخدمين")
+
+    async def _system_command(self, message: Message):
+        """معالج أمر /system يوجه لأمر إدارة system"""
+        try:
+            result = await self.handlers.handle_admin_command(message.from_user.id, "system", [])
+            await message.answer(result)
+        except Exception as e:
+            logger.error(f"❌ خطأ في أمر system: {e}")
+            await message.answer("❌ حدث خطأ أثناء جلب معلومات النظام")
     
     async def _handle_text(self, message: Message):
         """معالج النصوص التي تبدأ بـ .yt"""
