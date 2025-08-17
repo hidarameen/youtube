@@ -7,14 +7,16 @@ import asyncio
 import logging
 import subprocess
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Set
 
 from telethon import TelegramClient, events
 from telethon.tl.types import DocumentAttributeVideo
 from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 
 # Optional import guard for yt_dlp to provide a clear error if missing
 try:
@@ -38,6 +40,10 @@ class Config:
 	session_name: str = "userbot"
 	download_dir: Path = Path("downloads")
 	max_file_size_gb: float = 2.0
+	bot_token: str = ""
+	admin_user_ids: Set[int] = field(default_factory=set)
+	target_peer: str = "me"
+	use_uvloop: bool = False
 
 	@property
 	def max_file_size_bytes(self) -> int:
@@ -52,11 +58,21 @@ def load_config_from_env() -> Config:
 	session_name = os.getenv("SESSION_NAME", "userbot").strip() or "userbot"
 	download_dir = Path(os.getenv("DOWNLOAD_DIR", "downloads").strip() or "downloads")
 	max_file_size_gb = float(os.getenv("MAX_FILE_SIZE_GB", "2").strip() or 2)
+	bot_token = os.getenv("BOT_TOKEN", "").strip()
+	admin_ids_text = os.getenv("ADMIN_USER_IDS", "").strip()
+	target_peer = os.getenv("TARGET_PEER", "me").strip() or "me"
+	use_uvloop = os.getenv("USE_UVLOOP", "0").strip() in {"1", "true", "True"}
 
 	if not api_id_str.isdigit():
 		raise RuntimeError("API_ID is missing or invalid in environment.")
 	if not api_hash:
 		raise RuntimeError("API_HASH is missing in environment.")
+
+	admin_ids: Set[int] = set()
+	if admin_ids_text:
+		for part in admin_ids_text.replace(" ", "").split(","):
+			if part.isdigit():
+				admin_ids.add(int(part))
 
 	cfg = Config(
 		api_id=int(api_id_str),
@@ -64,6 +80,10 @@ def load_config_from_env() -> Config:
 		session_name=session_name,
 		download_dir=download_dir,
 		max_file_size_gb=max_file_size_gb,
+		bot_token=bot_token,
+		admin_user_ids=admin_ids,
+		target_peer=target_peer,
+		use_uvloop=use_uvloop,
 	)
 	cfg.download_dir.mkdir(parents=True, exist_ok=True)
 	return cfg
@@ -227,10 +247,24 @@ async def run_yt_dlp_download(
 	return path, info
 
 
-async def send_with_progress(client: TelegramClient, chat_id: int, file_path: Path, caption: str, duration: Optional[int]) -> None:
+async def send_with_progress(
+	client: TelegramClient,
+	chat_id,
+	file_path: Path,
+	caption: str,
+	duration: Optional[int],
+	status_updater_aiogram: Optional[types.Message] = None,
+) -> None:
 	status_msg = await client.send_message(chat_id, "⏫ جاري الرفع إلى تيليجرام...")
 
 	last_ts = 0.0
+
+	async def update_control(text: str):
+		if status_updater_aiogram:
+			try:
+				await status_updater_aiogram.edit_text(text)
+			except Exception:
+				pass
 
 	def progress(current: int, total: int):
 		nonlocal last_ts
@@ -247,6 +281,7 @@ async def send_with_progress(client: TelegramClient, chat_id: int, file_path: Pa
 			asyncio.create_task(status_msg.edit(msg))
 		except Exception:
 			pass
+		asyncio.create_task(update_control(msg))
 
 	w, h, probed_dur = probe_video_stream_info(file_path)
 	if not duration and probed_dur:
@@ -299,6 +334,13 @@ def parse_command_args(arg_line: str) -> Tuple[Optional[str], int]:
 
 async def main() -> None:
 	cfg = load_config_from_env()
+	if cfg.use_uvloop and sys.platform.startswith("linux"):
+		try:
+			import uvloop
+			uvloop.install()
+		except Exception:
+			logger.info("uvloop not available; continuing with default loop")
+
 	client = TelegramClient(cfg.session_name, cfg.api_id, cfg.api_hash)
 	semaphore = asyncio.Semaphore(1)  # limit to one job at a time to reduce resource usage
 
@@ -373,8 +415,77 @@ async def main() -> None:
 				await status_msg.edit(f"❌ حدث خطأ غير متوقع: {str(e)[:1000]}")
 
 	await client.start()
-	logger.info("Userbot started. Send .yt <url> in any chat from your account.")
-	await client.run_until_disconnected()
+	logger.info("Telethon userbot started.")
+
+	# Aiogram control bot (optional)
+	dp: Optional[Dispatcher] = None
+	bot: Optional[Bot] = None
+	if cfg.bot_token:
+		bot = Bot(cfg.bot_token)
+		dp = Dispatcher()
+
+		def is_admin(user_id: Optional[int]) -> bool:
+			return bool(user_id and (not cfg.admin_user_ids or user_id in cfg.admin_user_ids))
+
+		@dp.message(Command("start"))
+		async def cmd_start(message: types.Message):
+			if not is_admin(message.from_user.id):
+				return
+			await message.reply("👋 أهلاً! أرسل /yt <url> لبدء التنزيل والرفع.")
+
+		@dp.message(Command("yt"))
+		async def cmd_yt(message: types.Message):
+			if not is_admin(message.from_user.id):
+				return
+			text = message.text or ""
+			args = text.split(" ", 1)
+			if len(args) < 2:
+				await message.reply("❌ التنسيق: /yt <url> [--res 360|480|720|1080]")
+				return
+			arg_line = args[1]
+			url, resolution = parse_command_args(arg_line)
+			if not url:
+				await message.reply("❌ يرجى تزويد رابط صحيح.")
+				return
+			await message.answer("🔎 جارِ التحضير...")
+			status_msg = await message.answer("⏬ بدأ التنزيل...")
+			async with semaphore:
+				try:
+					async def updater(text: str):
+						await status_msg.edit_text(text)
+					file_path, info = await run_yt_dlp_download(url, cfg.download_dir, resolution, updater)
+					size_bytes = file_path.stat().st_size
+					if size_bytes > cfg.max_file_size_bytes:
+						await status_msg.edit_text(
+							f"⚠️ الحجم النهائي {human_size(size_bytes)} يتجاوز الحد {cfg.max_file_size_gb}GB.\nجرّب دقّة أقل عبر: /yt {url} --res 480"
+						)
+						file_path.unlink(missing_ok=True)
+						return
+					title = info.get("title") or ""
+					duration = info.get("duration")
+					source_url = info.get("webpage_url") or url
+					caption = f"{title}\n\nالمصدر: {source_url}"
+					if len(caption) > 1024:
+						caption = caption[:1000] + "...\n" + source_url
+					await status_msg.edit_text("⏫ جاري الرفع إلى تيليجرام...")
+					await send_with_progress(client, cfg.target_peer, file_path, caption, duration, status_updater_aiogram=status_msg)
+					await status_msg.edit_text("✅ تم الرفع، جاري حذف الملف المحلي...")
+					file_path.unlink(missing_ok=True)
+					await status_msg.edit_text("✅ اكتملت العملية")
+				except yt_dlp.utils.DownloadError as de:
+					logger.exception("Download error")
+					await status_msg.edit_text(f"❌ فشل التنزيل: {str(de)[:1000]}")
+				except Exception as e:
+					logger.exception("Unhandled error")
+					await status_msg.edit_text(f"❌ حدث خطأ غير متوقع: {str(e)[:1000]}")
+
+	# Run both services
+	tasks = []
+	tasks.append(asyncio.create_task(client.run_until_disconnected()))
+	if cfg.bot_token and dp and bot:
+		tasks.append(asyncio.create_task(dp.start_polling(bot)))
+	logger.info("Control bot started." if cfg.bot_token else "Control bot disabled (no BOT_TOKEN)")
+	await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
