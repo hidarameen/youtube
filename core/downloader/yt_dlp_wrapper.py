@@ -34,11 +34,14 @@ class YTDlpWrapper:
     def __init__(self):
         self.progress_tracker = ProgressTracker()
     
-    def download_video(self, url: str, ydl_opts: Dict[str, Any]) -> 'DownloadResult':
+    def download_video(self, url: str, ydl_opts: Dict[str, Any], progress_hook: Optional[Any] = None) -> 'DownloadResult':
         """تحميل الفيديو"""
         try:
             # إضافة progress hook
-            ydl_opts['progress_hooks'] = [self.progress_tracker.update_progress]
+            if progress_hook is not None:
+                ydl_opts['progress_hooks'] = [progress_hook]
+            else:
+                ydl_opts['progress_hooks'] = [self.progress_tracker.update_progress]
             
             # إنشاء كائن yt-dlp
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
