@@ -88,11 +88,11 @@ def format_duration(seconds: Optional[int]) -> str:
 
 
 def pick_format_for_resolution(target_res: int) -> str:
-	# Robust selector: prefer separate best video/audio up to target height, fallback to best single stream.
-	# Merging is forced to mp4 via options.
+	# Prefer H.264 video (mp4) + AAC audio (m4a) when possible for best Telegram compatibility.
+	# Fallback to best single stream within target height.
 	return (
-		f"bestvideo[height<={target_res}]+bestaudio/"
-		f"best[height<={target_res}]"
+		f"bestvideo[height<={target_res}][ext=mp4]+bestaudio[ext=m4a]/"
+		f"best[height<={target_res}][ext=mp4]/best[height<={target_res}]"
 	)
 
 
@@ -167,13 +167,15 @@ async def run_yt_dlp_download(
 				pct = downloaded * 100.0 / max(total, 1)
 			speed = d.get("speed")
 			eta = d.get("eta")
-			msg = (
-				f"⏬ جاري التنزيل من يوتيوب\n"
-				f"المكتمل: {human_size(downloaded)} / {human_size(total)} ({pct:.1f}%)\n"
-				f"السرعة: {human_size(int(speed))}/s\n" if speed else f"" 
-			)
+			lines = [
+				"⏬ جاري التنزيل من يوتيوب",
+				f"المكتمل: {human_size(downloaded)} / {human_size(total)} ({pct:.1f}%)",
+			]
+			if speed:
+				lines.append(f"السرعة: {human_size(int(speed))}/s")
 			if eta is not None:
-				msg += f"الوقت المتبقي: {format_duration(eta)}\n"
+				lines.append(f"الوقت المتبقي: {format_duration(eta)}")
+			msg = "\n".join(lines)
 			# run thread-safe edit on the loop
 			asyncio.run_coroutine_threadsafe(edit_status(msg), loop)
 
