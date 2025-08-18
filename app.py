@@ -68,7 +68,8 @@ class YouTubeTelegramBot:
 				self.web_app,
 				host=config.web.host,
 				port=config.web.port,
-				log_level=config.logging.level.lower(),
+				log_level="warning",
+				access_log=False,
 			)
 			self._uvicorn_server = uvicorn.Server(uv_config)
 			self._uvicorn_task = asyncio.create_task(self._uvicorn_server.serve())
@@ -216,9 +217,9 @@ async def main():
 		level=getattr(logging, config.logging.level),
 		format=config.logging.format,
 		handlers=[
-			logging.FileHandler(config.logging.file),
-			logging.StreamHandler(sys.stdout)
-		]
+			logging.FileHandler(config.logging.file)
+		],
+		force=True
 	)
 	
 	# إنشاء التطبيق

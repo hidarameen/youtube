@@ -24,9 +24,12 @@ except Exception as e:  # pragma: no cover
 	raise
 
 
+Path("logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
 	level=logging.INFO,
 	format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+	handlers=[logging.FileHandler("logs/userbot.log")],
+	force=True
 )
 logger = logging.getLogger("yt_telethon_userbot")
 

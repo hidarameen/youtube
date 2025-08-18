@@ -108,6 +108,9 @@ class SecurityConfig:
     bcrypt_rounds: int = 12
     session_timeout: int = 3600  # 1 hour
     max_login_attempts: int = 5
+    admin_username: str = "admin"
+    admin_password: str = ""
+    admin_password_hash: str = ""
 
 
 @dataclass
@@ -169,6 +172,9 @@ class Config:
 
         self.security.encryption_key = os.getenv("ENCRYPTION_KEY", self.security.encryption_key)
         self.security.jwt_secret = os.getenv("JWT_SECRET", self.security.jwt_secret)
+        self.security.admin_username = os.getenv("ADMIN_USERNAME", getattr(self.security, "admin_username", "admin"))
+        self.security.admin_password = os.getenv("ADMIN_PASSWORD", getattr(self.security, "admin_password", ""))
+        self.security.admin_password_hash = os.getenv("ADMIN_PASSWORD_HASH", getattr(self.security, "admin_password_hash", ""))
 
     def create_directories(self) -> None:
         """إنشاء المجلدات المطلوبة"""
