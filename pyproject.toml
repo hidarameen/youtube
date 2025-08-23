@@ -1,0 +1,21 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "asyncpg>=0.30.0",
+    "loguru>=0.7.3",
+    "pillow>=11.3.0",
+    "psutil>=7.0.0",
+    "psycopg2-binary>=2.9.10",
+    "python-magic>=0.4.27",
+    "python-telegram-bot>=22.3",
+    "redis>=6.4.0",
+    "requests>=2.32.5",
+    "sqlalchemy>=2.0.43",
+    "telethon>=1.40.0",
+    "uvloop>=0.21.0",
+    "yt-dlp>=2025.8.22",
+]

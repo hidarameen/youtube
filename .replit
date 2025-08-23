@@ -1,2 +1,31 @@
+modules = ["python-3.11"]
 [agent]
 expertMode = true
+integrations = ["python_database==1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["file", "freetype", "lcms2", "libimagequant", "libjpeg", "libtiff", "libuv", "libwebp", "libxcrypt", "openjpeg", "openssl", "postgresql", "tcl", "tk", "zlib"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Video Downloader Bot"
+
+[[workflows.workflow]]
+name = "Video Downloader Bot"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py"
