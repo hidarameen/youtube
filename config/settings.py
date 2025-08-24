@@ -76,6 +76,10 @@ class Settings:
         "generic", "dailymotion", "vimeo", "twitch"
     ])
     
+    # API Keys for enhanced platform support
+    INSTAGRAM_ACCESS_TOKEN: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
+    FACEBOOK_ACCESS_TOKEN: str = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
+    
     def validate(self) -> bool:
         """Validate critical configuration settings"""
         errors = []

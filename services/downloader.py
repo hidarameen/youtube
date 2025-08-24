@@ -90,6 +90,44 @@ class VideoDownloader:
                     'fragment_retries': 2,
                 }
                 
+                # Add platform-specific options
+                if platform == 'instagram':
+                    ydl_opts.update({
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Accept-Encoding': 'gzip, deflate, br',
+                        }
+                    })
+                    
+                    # Use Instagram API if token is available
+                    if settings.INSTAGRAM_ACCESS_TOKEN:
+                        ydl_opts['extractor_args'] = {
+                            'instagram': {
+                                'access_token': settings.INSTAGRAM_ACCESS_TOKEN
+                            }
+                        }
+                        logger.info("🔑 Using Instagram API authentication")
+                
+                elif platform == 'facebook':
+                    ydl_opts.update({
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                        }
+                    })
+                    
+                    # Use Facebook API if token is available
+                    if settings.FACEBOOK_ACCESS_TOKEN:
+                        ydl_opts['extractor_args'] = {
+                            'facebook': {
+                                'access_token': settings.FACEBOOK_ACCESS_TOKEN
+                            }
+                        }
+                        logger.info("🔑 Using Facebook API authentication")
+                
                 # Extract info in thread pool
                 loop = asyncio.get_event_loop()
                 info = await loop.run_in_executor(
@@ -117,9 +155,58 @@ class VideoDownloader:
                 
             except Exception as e:
                 attempt += 1
+                
+                # Special handling for Instagram and Facebook errors
+                if platform in ['instagram', 'facebook'] and ('login required' in str(e).lower() or 'rate-limit' in str(e).lower() or 'private' in str(e).lower()):
+                    # Try with API if available and not already used
+                    if attempt == 1:
+                        if platform == 'instagram' and settings.INSTAGRAM_ACCESS_TOKEN:
+                            logger.info("🔄 Trying Instagram API method...")
+                            try:
+                                api_info = await self._try_instagram_api(url)
+                                if api_info:
+                                    return api_info
+                            except Exception as api_e:
+                                logger.debug(f"Instagram API method failed: {api_e}")
+                        elif platform == 'facebook' and settings.FACEBOOK_ACCESS_TOKEN:
+                            logger.info("🔄 Trying Facebook API method...")
+                            try:
+                                api_info = await self._try_facebook_api(url)
+                                if api_info:
+                                    return api_info
+                            except Exception as api_e:
+                                logger.debug(f"Facebook API method failed: {api_e}")
+                        
+                        # Fallback to alternative method
+                        logger.info("🔄 Trying alternative extraction method...")
+                        try:
+                            alt_info = await self._try_alternative_extraction(url, platform)
+                            if alt_info:
+                                return alt_info
+                        except Exception as alt_e:
+                            logger.debug(f"Alternative method failed: {alt_e}")
+                
                 if attempt >= self.retry_attempts:
-                    logger.error(f"❌ Failed to extract video info after {self.retry_attempts} attempts: {e}", exc_info=True)
-                    raise
+                    # Provide platform-specific error messages
+                    if platform == 'instagram':
+                        if 'login required' in str(e).lower() or 'rate-limit' in str(e).lower():
+                            if not settings.INSTAGRAM_ACCESS_TOKEN:
+                                raise ValueError("Instagram content requires authentication. Please configure Instagram API access token for better access to content.")
+                            else:
+                                raise ValueError("Unable to access Instagram content even with API. This video might be private or temporarily unavailable.")
+                        else:
+                            raise ValueError(f"Unable to access Instagram content: {str(e)}")
+                    elif platform == 'facebook':
+                        if 'login required' in str(e).lower() or 'private' in str(e).lower():
+                            if not settings.FACEBOOK_ACCESS_TOKEN:
+                                raise ValueError("Facebook content requires authentication. Please configure Facebook API access token for better access to content.")
+                            else:
+                                raise ValueError("Unable to access Facebook content even with API. This video might be private or temporarily unavailable.")
+                        else:
+                            raise ValueError(f"Unable to access Facebook content: {str(e)}")
+                    else:
+                        logger.error(f"❌ Failed to extract video info after {self.retry_attempts} attempts: {e}", exc_info=True)
+                        raise
                 
                 logger.warning(f"⚠️ Video info extraction attempt {attempt} failed, retrying in {self.retry_delay}s: {e}")
                 await asyncio.sleep(self.retry_delay)
@@ -132,6 +219,142 @@ class VideoDownloader:
         except Exception as e:
             logger.error(f"yt-dlp extraction error: {e}")
             return None
+    
+    async def _try_instagram_api(self, url: str) -> Optional[Dict]:
+        """Try Instagram Graph API for better access"""
+        try:
+            import re
+            import aiohttp
+            
+            # Extract video ID from URL
+            video_id_match = re.search(r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url)
+            if not video_id_match:
+                return None
+            
+            video_id = video_id_match.group(1)
+            
+            # Use Instagram Graph API
+            api_url = f"https://graph.instagram.com/{video_id}"
+            params = {
+                'fields': 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp',
+                'access_token': settings.INSTAGRAM_ACCESS_TOKEN
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        # Convert API response to yt-dlp format
+                        processed_info = {
+                            'id': data.get('id', video_id),
+                            'title': data.get('caption', 'Instagram Video')[:100] or 'Instagram Video',
+                            'uploader': 'Instagram User',
+                            'url': data.get('media_url', ''),
+                            'thumbnail': data.get('thumbnail_url', ''),
+                            'duration': 0,  # API doesn't provide duration
+                            'view_count': 0,
+                            'platform': 'instagram',
+                            'webpage_url': url,
+                            'formats': [{
+                                'url': data.get('media_url', ''),
+                                'format_id': 'api',
+                                'ext': 'mp4',
+                                'quality': 'unknown'
+                            }] if data.get('media_url') else []
+                        }
+                        
+                        return processed_info
+            
+        except Exception as e:
+            logger.debug(f"Instagram API extraction failed: {e}")
+        
+        return None
+    
+    async def _try_facebook_api(self, url: str) -> Optional[Dict]:
+        """Try Facebook Graph API for better access"""
+        try:
+            import re
+            import aiohttp
+            
+            # Extract video ID from URL
+            video_id_match = re.search(r'(?:watch.*v=|videos/)(\d+)', url)
+            if not video_id_match:
+                return None
+            
+            video_id = video_id_match.group(1)
+            
+            # Use Facebook Graph API
+            api_url = f"https://graph.facebook.com/v18.0/{video_id}"
+            params = {
+                'fields': 'id,source,description,created_time,permalink_url',
+                'access_token': settings.FACEBOOK_ACCESS_TOKEN
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        # Convert API response to yt-dlp format
+                        processed_info = {
+                            'id': data.get('id', video_id),
+                            'title': data.get('description', 'Facebook Video')[:100] or 'Facebook Video',
+                            'uploader': 'Facebook User',
+                            'url': data.get('source', ''),
+                            'duration': 0,  # API might not provide duration
+                            'view_count': 0,
+                            'platform': 'facebook',
+                            'webpage_url': url,
+                            'formats': [{
+                                'url': data.get('source', ''),
+                                'format_id': 'api',
+                                'ext': 'mp4',
+                                'quality': 'unknown'
+                            }] if data.get('source') else []
+                        }
+                        
+                        return processed_info
+            
+        except Exception as e:
+            logger.debug(f"Facebook API extraction failed: {e}")
+        
+        return None
+    
+    async def _try_alternative_extraction(self, url: str, platform: str) -> Optional[Dict]:
+        """Try alternative extraction methods with different settings"""
+        try:
+            # Try with generic extractor and different user agent
+            alt_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False,
+                'skip_download': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+                'socket_timeout': 20,
+                'retries': 1,
+            }
+            
+            # Extract with alternative settings
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(
+                self.executor, 
+                self._extract_info_sync, 
+                url, 
+                alt_opts
+            )
+            
+            if info:
+                return await self._process_video_info(info, platform)
+            
+        except Exception as e:
+            logger.debug(f"Alternative extraction failed: {e}")
+        
+        return None
     
     async def _process_video_info(self, info: Dict, platform: str) -> Dict[str, Any]:
         """Process and format video information"""
