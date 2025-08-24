@@ -369,14 +369,23 @@ class VideoDownloader:
                 total = d.get('total_bytes', 0) or d.get('total_bytes_estimate', 0)
                 downloaded = d.get('downloaded_bytes', 0)
                 
-                # Update progress tracker asynchronously
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(
-                        self.progress_tracker.update_download_progress(
-                            task_id, downloaded, total, "Downloading..."
+                # Update progress tracker safely from thread
+                try:
+                    # Try to get the running loop
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Schedule the coroutine to run in the event loop
+                        asyncio.run_coroutine_threadsafe(
+                            self.progress_tracker.update_download_progress(
+                                task_id, downloaded, total, "Downloading..."
+                            ), loop
                         )
-                    )
+                    except RuntimeError:
+                        # No running loop, skip progress update
+                        pass
+                except Exception as e:
+                    # Silently handle progress update errors
+                    logger.debug(f"Progress update error: {e}")
         
         return progress_hook
     
@@ -384,13 +393,22 @@ class VideoDownloader:
         """Create postprocessor hook for yt-dlp"""
         def postprocessor_hook(d):
             if d['status'] == 'processing':
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    asyncio.create_task(
-                        self.progress_tracker.update_download_progress(
-                            task_id, 0, 0, "Processing..."
+                try:
+                    # Try to get the running loop
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # Schedule the coroutine to run in the event loop
+                        asyncio.run_coroutine_threadsafe(
+                            self.progress_tracker.update_download_progress(
+                                task_id, 0, 0, "Processing..."
+                            ), loop
                         )
-                    )
+                    except RuntimeError:
+                        # No running loop, skip progress update
+                        pass
+                except Exception as e:
+                    # Silently handle progress update errors
+                    logger.debug(f"Progress update error: {e}")
         
         return postprocessor_hook
     
@@ -426,27 +444,60 @@ class VideoDownloader:
             raise
     
     def _find_downloaded_file(self, expected_filename: str) -> Optional[str]:
-        """Find the actual downloaded file (handles extension changes)"""
+        """Find the actual downloaded file (prioritizes video over images)"""
         if os.path.exists(expected_filename):
             return expected_filename
         
-        # Check for common extension variations
+        # Check for common video extension variations first (prioritize video files)
         base_name = os.path.splitext(expected_filename)[0]
-        extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.mp3', '.m4a', '.ogg']
+        video_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.3gp']
+        audio_extensions = ['.mp3', '.m4a', '.ogg', '.wav', '.aac']
         
-        for ext in extensions:
+        # First pass: Look for video files
+        for ext in video_extensions:
             test_path = base_name + ext
             if os.path.exists(test_path):
                 return test_path
         
-        # Check directory for any file with similar name
+        # Second pass: Look for audio files
+        for ext in audio_extensions:
+            test_path = base_name + ext
+            if os.path.exists(test_path):
+                return test_path
+        
+        # Check directory for any file with similar name (prioritize video/audio over images)
         directory = os.path.dirname(expected_filename)
         base_filename = os.path.basename(base_name)
         
         if os.path.exists(directory):
+            video_files = []
+            audio_files = []
+            other_files = []
+            
             for file in os.listdir(directory):
                 if file.startswith(base_filename):
-                    return os.path.join(directory, file)
+                    file_path = os.path.join(directory, file)
+                    file_ext = os.path.splitext(file)[1].lower()
+                    
+                    # Skip thumbnail and info files
+                    if file_ext in ['.jpg', '.jpeg', '.png', '.webp', '.image'] or \
+                       file.endswith('.info.json') or '.thumb.' in file:
+                        continue
+                    
+                    if file_ext in video_extensions:
+                        video_files.append(file_path)
+                    elif file_ext in audio_extensions:
+                        audio_files.append(file_path)
+                    else:
+                        other_files.append(file_path)
+            
+            # Return in priority order: video > audio > other
+            if video_files:
+                return video_files[0]
+            elif audio_files:
+                return audio_files[0]
+            elif other_files:
+                return other_files[0]
         
         return None
     

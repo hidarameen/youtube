@@ -103,6 +103,7 @@ class Icons:
     ACCOUNT = "🧑‍💼"
     ADMIN = "👑"
     VIP = "💎"
+    DEVELOPER = "👨‍💻"
     
     # Navigation Icons
     BACK = "◀️"

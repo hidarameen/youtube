@@ -120,7 +120,9 @@ class VideoDownloaderBot:
         self.callback_handlers = CallbackHandlers(
             self.downloader,
             self.file_manager,
-            self.progress_tracker
+            self.progress_tracker,
+            self.db_manager,
+            self.cache_manager
         )
         
         self.message_handlers = MessageHandlers(

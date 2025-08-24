@@ -13,6 +13,8 @@ from telegram.constants import ParseMode
 from services.downloader import VideoDownloader
 from services.file_manager import FileManager
 from services.progress_tracker import ProgressTracker
+from database.connection import DatabaseManager
+from services.cache_manager import CacheManager
 from utils.formatters import format_file_size, format_duration
 from utils.helpers import create_format_selection_keyboard, create_download_progress_message
 from static.icons import Icons
@@ -26,11 +28,15 @@ class CallbackHandlers:
         self, 
         downloader: VideoDownloader, 
         file_manager: FileManager,
-        progress_tracker: ProgressTracker
+        progress_tracker: ProgressTracker,
+        db_manager: DatabaseManager,
+        cache_manager: CacheManager
     ):
         self.downloader = downloader
         self.file_manager = file_manager
         self.progress_tracker = progress_tracker
+        self.db_manager = db_manager
+        self.cache_manager = cache_manager
         
         # Track active downloads per user
         self.user_downloads: Dict[int, Dict[str, Any]] = {}
@@ -100,7 +106,7 @@ class CallbackHandlers:
             # Simulate help command
             await CommandHandlers(
                 self.downloader, self.file_manager, 
-                self.downloader.db_manager, self.downloader.cache_manager
+                self.db_manager, self.cache_manager
             ).help_command(update, context)
         except Exception as e:
             logger.error(f"Help callback error: {e}")
@@ -112,7 +118,7 @@ class CallbackHandlers:
             from handlers.commands import CommandHandlers
             await CommandHandlers(
                 self.downloader, self.file_manager,
-                self.downloader.db_manager, self.downloader.cache_manager
+                self.db_manager, self.cache_manager
             ).stats_command(update, context)
         except Exception as e:
             logger.error(f"Stats callback error: {e}")
@@ -124,7 +130,7 @@ class CallbackHandlers:
             from handlers.commands import CommandHandlers
             await CommandHandlers(
                 self.downloader, self.file_manager,
-                self.downloader.db_manager, self.downloader.cache_manager
+                self.db_manager, self.cache_manager
             ).settings_command(update, context)
         except Exception as e:
             logger.error(f"Settings callback error: {e}")
@@ -177,7 +183,7 @@ class CallbackHandlers:
             from handlers.commands import CommandHandlers
             await CommandHandlers(
                 self.downloader, self.file_manager,
-                self.downloader.db_manager, self.downloader.cache_manager
+                self.db_manager, self.cache_manager
             ).start_command(update, context)
         except Exception as e:
             logger.error(f"Start callback error: {e}")

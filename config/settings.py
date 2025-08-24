@@ -108,8 +108,8 @@ class Settings:
             'format': 'best[height<=1080]/best',
             'noplaylist': True,
             'extract_flat': False,
-            'writethumbnail': True,
-            'writeinfojson': True,
+            'writethumbnail': False,  # Disable automatic thumbnail download to avoid confusion
+            'writeinfojson': False,   # Disable info.json to reduce clutter
             'ignoreerrors': True,
             'no_warnings': False,
             'retries': 3,
