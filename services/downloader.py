@@ -257,10 +257,18 @@ class VideoDownloader:
             video_id = video_id_match.group(1)
             logger.info(f"📝 Extracted video ID: {video_id}")
             
-            # Use Instagram Graph API
-            api_url = f"https://graph.instagram.com/{video_id}"
+            # Try different Instagram API endpoints
+            # First try the media endpoint
+            api_url = f"https://graph.instagram.com/v18.0/{video_id}"
             params = {
-                'fields': 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp',
+                'fields': 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp,username',
+                'access_token': settings.INSTAGRAM_ACCESS_TOKEN
+            }
+            
+            # If that fails, try the business discovery endpoint
+            fallback_url = f"https://graph.instagram.com/v18.0/me"
+            fallback_params = {
+                'fields': f'business_discovery.username(instagram){{media.limit(1){{id,media_type,media_url,thumbnail_url,caption}}}}',
                 'access_token': settings.INSTAGRAM_ACCESS_TOKEN
             }
             

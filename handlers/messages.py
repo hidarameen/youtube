@@ -56,11 +56,15 @@ class MessageHandlers:
                 await self._send_unsupported_platform_message(message)
                 return
             
-            # Send processing message
+            # Import animations
+            from utils.progress_animations import InteractiveMessages, progress_animator
+            
+            # Send beautiful processing message with animation
+            progress_bar = progress_animator.get_animated_progress_bar(0, f"extract_{user.id}", "pulse")
+            processing_text = InteractiveMessages.get_processing_message(platform, progress_bar)
+            
             processing_message = await message.reply_text(
-                f"{Icons.PROCESSING} <b>Processing URL...</b>\n\n"
-                f"{Icons.PLATFORM} Platform: <b>{platform.title()}</b>\n"
-                f"{Icons.LINK} Extracting video information...",
+                processing_text,
                 parse_mode=ParseMode.HTML
             )
             
@@ -68,12 +72,45 @@ class MessageHandlers:
                 # Extract video information
                 video_info = await self.downloader.get_video_info(text, user.id)
                 
+                # Update message with success animation
+                from utils.progress_animations import InteractiveMessages
+                success_progress = progress_animator.get_animated_progress_bar(100, f"extract_{user.id}", "pulse")
+                success_text = f"""
+{Icons.SUCCESS} <b>تم استخراج معلومات الفيديو بنجاح!</b>
+
+{Icons.VIDEO} <b>العنوان:</b> {video_info.get('title', 'فيديو بدون عنوان')[:50]}...
+{Icons.TIMER} <b>المدة:</b> {video_info.get('duration_string', 'غير محدد')}
+{Icons.PLATFORMS} <b>المنصة:</b> {platform.title()}
+
+{success_progress}
+
+{Icons.SPARKLES} <i>اختر الجودة والصيغة المفضلة لديك...</i>
+                """
+                
+                await processing_message.edit_text(success_text, parse_mode=ParseMode.HTML)
+                await asyncio.sleep(1.5)  # Show success animation
+                
                 # Generate video preview
                 await self._send_video_preview(processing_message, video_info, text)
                 
             except Exception as e:
                 logger.error(f"❌ Video info extraction failed: {e}", exc_info=True)
-                await self._send_extraction_error(processing_message, str(e))
+                # Send beautiful error message with animation
+                error_progress = progress_animator.get_animated_progress_bar(0, f"error_{user.id}", "default")
+                error_text = InteractiveMessages.get_error_message(
+                    str(e), 
+                    f"\n{Icons.TIP} <b>اقتراحات:</b>\n• تأكد من أن الرابط صحيح\n• جرب رابطاً من منصة أخرى\n• أعد المحاولة بعد قليل"
+                )
+                
+                await processing_message.edit_text(error_text, parse_mode=ParseMode.HTML)
+                
+                # Add retry button
+                retry_keyboard = [[
+                    InlineKeyboardButton(f"{Icons.REFRESH} إعادة المحاولة", callback_data=f"retry_extraction:{text[:100]}")
+                ]]
+                await processing_message.edit_reply_markup(
+                    reply_markup=InlineKeyboardMarkup(retry_keyboard)
+                )
             
         except Exception as e:
             logger.error(f"❌ URL message handling error: {e}", exc_info=True)

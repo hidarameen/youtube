@@ -57,8 +57,11 @@ class CommandHandlers:
                 chat_id=chat.id
             )
             
-            # Create welcome message
-            welcome_msg = create_welcome_message(user.first_name)
+            # Import interactive messages
+            from utils.progress_animations import InteractiveMessages
+            
+            # Create beautiful animated welcome message
+            welcome_msg = InteractiveMessages.get_welcome_message(user.first_name)
             
             # Create inline keyboard with main options
             keyboard = [

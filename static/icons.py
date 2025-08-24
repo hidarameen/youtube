@@ -42,12 +42,19 @@ class Icons:
     TIMER = "⏲️"
     STOPWATCH = "⏱️"
     
-    # Animated Progress Icons
+    # Enhanced Animated Progress Icons
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     PROGRESS_FRAMES = ["◐", "◓", "◑", "◒"]
     PULSE_FRAMES = ["💙", "💚", "💛", "🧡", "❤️", "💜"]
-    DOWNLOAD_ANIMATION = ["📥", "📦", "📤"]
-    UPLOAD_ANIMATION = ["📤", "☁️", "✅"]
+    RAINBOW_PROGRESS = ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣"]
+    FIRE_FRAMES = ["🔥", "🚀", "⚡", "💥", "🔥"]
+    STAR_FRAMES = ["💫", "⭐", "✨", "🌟", "💫"]
+    
+    # Interactive Animation Sets
+    DOWNLOAD_ANIMATION = ["📥💫", "📥⭐", "📥✨", "📥🌟", "📥💫"]
+    UPLOAD_ANIMATION = ["📤🔥", "📤🚀", "📤⚡", "📤💥", "📤🔥"]
+    SUCCESS_FRAMES = ["✅🎉", "✅🎊", "✅🥳", "✅🎈", "✅🎉"]
+    ERROR_FRAMES = ["❌💥", "❌⚠️", "❌🚫", "❌💔", "❌💥"]
     
     # Special Effect Icons
     MAGIC = "✨"
