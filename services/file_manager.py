@@ -291,10 +291,16 @@ class FileManager:
     
     def _create_file_caption(self, video_info: Dict, format_info: Dict, file_size: int) -> str:
         """Create formatted caption for uploaded file"""
+        from utils.helpers import truncate_text
+        
         title = video_info.get('title', 'Unknown Title')
         uploader = video_info.get('uploader', 'Unknown')
         duration = video_info.get('duration', 0)
         platform = video_info.get('platform', 'Unknown')
+        
+        # Truncate long fields to prevent caption overflow
+        title = truncate_text(title, 80)
+        uploader = truncate_text(uploader, 50)
         
         # Format duration
         duration_str = format_duration(duration) if duration else 'Unknown'
@@ -304,6 +310,21 @@ class FileManager:
         ext = format_info.get('ext', 'mp4')
         
         caption = f"""🎬 <b>{title}</b>
+
+👤 <b>Uploader:</b> {uploader}
+🌐 <b>Platform:</b> {platform.title()}
+⏱ <b>Duration:</b> {duration_str}
+📺 <b>Quality:</b> {quality}
+📁 <b>Format:</b> {ext.upper()}
+💾 <b>File Size:</b> {format_file_size(file_size)}
+
+✅ <b>Downloaded via Ultra Video Bot</b>"""
+
+        # Ensure total caption doesn't exceed Telegram's 1024 character limit
+        if len(caption) > 1020:
+            # If still too long, truncate title further
+            title = truncate_text(title, 40)
+            caption = f"""🎬 <b>{title}</b>
 
 👤 <b>Uploader:</b> {uploader}
 🌐 <b>Platform:</b> {platform.title()}

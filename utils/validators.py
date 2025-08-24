@@ -193,7 +193,13 @@ def get_platform_from_url(url: str) -> Optional[str]:
         
         # Parse URL
         parsed = urlparse(url.lower())
-        domain = parsed.netloc.replace('www.', '').replace('m.', '')
+        domain = parsed.netloc
+        
+        # Remove common prefixes properly
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        elif domain.startswith('m.'):
+            domain = domain[2:]
         
         # Check each platform
         for platform_name, platform_info in SUPPORTED_PLATFORMS.items():
