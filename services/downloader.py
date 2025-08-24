@@ -157,7 +157,7 @@ class VideoDownloader:
                 attempt += 1
                 
                 # Special handling for Instagram and Facebook errors
-                if platform in ['instagram', 'facebook'] and ('login required' in str(e).lower() or 'rate-limit' in str(e).lower() or 'private' in str(e).lower()):
+                if platform in ['instagram', 'facebook'] and ('login required' in str(e).lower() or 'rate-limit' in str(e).lower() or 'private' in str(e).lower() or 'not available' in str(e).lower()):
                     # Try with API if available and not already used
                     if attempt == 1:
                         if platform == 'instagram' and settings.INSTAGRAM_ACCESS_TOKEN:
@@ -165,26 +165,46 @@ class VideoDownloader:
                             try:
                                 api_info = await self._try_instagram_api(url)
                                 if api_info:
+                                    logger.info("✅ Instagram API extraction successful!")
                                     return api_info
+                                else:
+                                    logger.warning("❌ Instagram API returned no data")
                             except Exception as api_e:
-                                logger.debug(f"Instagram API method failed: {api_e}")
+                                logger.warning(f"❌ Instagram API method failed: {api_e}")
                         elif platform == 'facebook' and settings.FACEBOOK_ACCESS_TOKEN:
                             logger.info("🔄 Trying Facebook API method...")
                             try:
                                 api_info = await self._try_facebook_api(url)
                                 if api_info:
+                                    logger.info("✅ Facebook API extraction successful!")
                                     return api_info
+                                else:
+                                    logger.warning("❌ Facebook API returned no data")
                             except Exception as api_e:
-                                logger.debug(f"Facebook API method failed: {api_e}")
+                                logger.warning(f"❌ Facebook API method failed: {api_e}")
                         
                         # Fallback to alternative method
                         logger.info("🔄 Trying alternative extraction method...")
                         try:
                             alt_info = await self._try_alternative_extraction(url, platform)
                             if alt_info:
+                                logger.info("✅ Alternative extraction successful!")
                                 return alt_info
+                            else:
+                                logger.warning("❌ Alternative extraction returned no data")
                         except Exception as alt_e:
-                            logger.debug(f"Alternative method failed: {alt_e}")
+                            logger.warning(f"❌ Alternative method failed: {alt_e}")
+                
+                # For Instagram, try API method on every attempt if yt-dlp continues to fail
+                if platform == 'instagram' and settings.INSTAGRAM_ACCESS_TOKEN and attempt <= 2:
+                    logger.info(f"🔄 Trying Instagram API method (attempt {attempt})...")
+                    try:
+                        api_info = await self._try_instagram_api(url)
+                        if api_info:
+                            logger.info("✅ Instagram API extraction successful!")
+                            return api_info
+                    except Exception as api_e:
+                        logger.warning(f"❌ Instagram API attempt {attempt} failed: {api_e}")
                 
                 if attempt >= self.retry_attempts:
                     # Provide platform-specific error messages
@@ -226,12 +246,16 @@ class VideoDownloader:
             import re
             import aiohttp
             
+            logger.info(f"🔍 Attempting Instagram API extraction for: {url}")
+            
             # Extract video ID from URL
             video_id_match = re.search(r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url)
             if not video_id_match:
+                logger.warning("❌ Could not extract video ID from Instagram URL")
                 return None
             
             video_id = video_id_match.group(1)
+            logger.info(f"📝 Extracted video ID: {video_id}")
             
             # Use Instagram Graph API
             api_url = f"https://graph.instagram.com/{video_id}"
@@ -240,10 +264,21 @@ class VideoDownloader:
                 'access_token': settings.INSTAGRAM_ACCESS_TOKEN
             }
             
-            async with aiohttp.ClientSession() as session:
+            logger.info(f"🌐 Making API request to: {api_url}")
+            
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(api_url, params=params) as response:
+                    logger.info(f"📡 API Response status: {response.status}")
+                    
                     if response.status == 200:
                         data = await response.json()
+                        logger.info(f"📦 API Response data keys: {list(data.keys())}")
+                        
+                        # Check if we have valid media data
+                        if not data.get('media_url'):
+                            logger.warning("❌ No media_url in API response")
+                            return None
                         
                         # Convert API response to yt-dlp format
                         processed_info = {
@@ -264,10 +299,15 @@ class VideoDownloader:
                             }] if data.get('media_url') else []
                         }
                         
+                        logger.info(f"✅ Successfully processed Instagram API data: {processed_info['title']}")
                         return processed_info
+                    else:
+                        error_text = await response.text()
+                        logger.warning(f"❌ API request failed with status {response.status}: {error_text}")
+                        return None
             
         except Exception as e:
-            logger.debug(f"Instagram API extraction failed: {e}")
+            logger.warning(f"❌ Instagram API extraction failed: {e}")
         
         return None
     
