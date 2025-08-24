@@ -66,10 +66,10 @@ class User(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_user_id', 'user_id'),
-        Index('idx_username', 'username'),
-        Index('idx_created_at', 'created_at'),
-        Index('idx_last_active', 'last_active'),
+        Index('idx_users_user_id', 'user_id'),
+        Index('idx_users_username', 'username'),
+        Index('idx_users_created_at', 'created_at'),
+        Index('idx_users_last_active', 'last_active'),
     )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -87,19 +87,19 @@ class User(Base):
             'failed_downloads': self.failed_downloads,
             'total_bytes_downloaded': self.total_bytes_downloaded,
             'total_bytes_uploaded': self.total_bytes_uploaded,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'last_active': self.last_active.isoformat() if self.last_active else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None,
+            'last_active': self.last_active.isoformat() if self.last_active is not None else None,
             'is_premium': self.is_premium,
-            'premium_expires': self.premium_expires.isoformat() if self.premium_expires else None
+            'premium_expires': self.premium_expires.isoformat() if self.premium_expires is not None else None
         }
     
     @property
     def success_rate(self) -> float:
         """Calculate user's download success rate"""
-        if self.total_downloads == 0:
+        if not self.total_downloads or self.total_downloads == 0:
             return 0.0
-        return (self.successful_downloads / self.total_downloads) * 100
+        return float((self.successful_downloads / self.total_downloads) * 100)
 
 class Download(Base):
     """Download model for tracking individual downloads"""
@@ -158,10 +158,10 @@ class Download(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_user_downloads', 'user_id', 'created_at'),
-        Index('idx_platform_status', 'platform', 'status'),
-        Index('idx_created_at', 'created_at'),
-        Index('idx_status', 'status'),
+        Index('idx_downloads_user_downloads', 'user_id', 'created_at'),
+        Index('idx_downloads_platform_status', 'platform', 'status'),
+        Index('idx_downloads_created_at', 'created_at'),
+        Index('idx_downloads_status', 'status'),
     )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -192,9 +192,9 @@ class Download(Base):
             'telegram_message_id': self.telegram_message_id,
             'telegram_chat_id': self.telegram_chat_id,
             'video_metadata': self.video_metadata,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'started_at': self.started_at.isoformat() if self.started_at else None,
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None,
+            'started_at': self.started_at.isoformat() if self.started_at is not None else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at is not None else None
         }
 
 class UserAnalytics(Base):
@@ -233,8 +233,8 @@ class UserAnalytics(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_user_date', 'user_id', 'date'),
-        Index('idx_date', 'date'),
+        Index('idx_analytics_user_date', 'user_id', 'date'),
+        Index('idx_analytics_date', 'date'),
     )
 
 class SystemStats(Base):
@@ -273,7 +273,7 @@ class SystemStats(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_timestamp', 'timestamp'),
+        Index('idx_system_stats_timestamp', 'timestamp'),
     )
 
 class Platform(Base):
@@ -312,16 +312,16 @@ class Platform(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_name', 'name'),
-        Index('idx_active', 'is_active'),
+        Index('idx_platforms_name', 'name'),
+        Index('idx_platforms_active', 'is_active'),
     )
     
     @property
     def success_rate(self) -> float:
         """Calculate platform's success rate"""
-        if self.total_downloads == 0:
+        if not self.total_downloads or self.total_downloads == 0:
             return 0.0
-        return (self.successful_downloads / self.total_downloads) * 100
+        return float((self.successful_downloads / self.total_downloads) * 100)
 
 class ErrorLog(Base):
     """Error log model for tracking and debugging errors"""
@@ -357,9 +357,9 @@ class ErrorLog(Base):
     
     # Indexes
     __table_args__ = (
-        Index('idx_error_type_created', 'error_type', 'created_at'),
-        Index('idx_user_errors', 'user_id', 'created_at'),
-        Index('idx_severity_resolved', 'severity', 'resolved'),
+        Index('idx_errors_type_created', 'error_type', 'created_at'),
+        Index('idx_errors_user_errors', 'user_id', 'created_at'),
+        Index('idx_errors_severity_resolved', 'severity', 'resolved'),
     )
 
 # Create all indexes and constraints

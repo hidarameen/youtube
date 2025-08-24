@@ -83,13 +83,13 @@ async def main():
         await shutdown_cleanup()
 
 if __name__ == "__main__":
-    # Run with optimized event loop
+    # Check if event loop is already running (Replit environment)
     try:
-        import uvloop
-        uvloop.install()
-        logger.info("🔄 Using uvloop for enhanced performance")
-    except ImportError:
-        logger.info("🔄 Using default asyncio event loop")
-    
-    # Run the application
-    asyncio.run(main())
+        loop = asyncio.get_running_loop()
+        logger.info("🔄 Using existing event loop")
+        # Schedule the main coroutine
+        asyncio.create_task(main())
+    except RuntimeError:
+        # No running loop, create new one
+        logger.info("🔄 Creating new event loop")
+        asyncio.run(main())

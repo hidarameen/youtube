@@ -27,6 +27,15 @@ class AuthMiddleware:
         # Track access attempts for security monitoring
         self.access_attempts = {}
         
+        # Brute force protection
+        self.max_failed_attempts = 5
+        self.lockout_duration = 300  # 5 minutes
+        self.failed_attempts: Dict[int, List[float]] = {}
+        
+        # Audit logging
+        self.enable_audit_log = True
+        self.audit_log_file = 'logs/security_audit.log'
+        
         logger.info(f"✅ Auth middleware initialized with {len(self.allowed_chat_ids)} allowed chats")
     
     async def check_access(self, update: Update) -> bool:

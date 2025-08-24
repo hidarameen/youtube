@@ -23,9 +23,9 @@ class DatabaseManager:
     """Ultra high-performance database manager with connection pooling"""
     
     def __init__(self):
-        self.engine = None
-        self.session_factory = None
-        self.connection_pool = None
+        self.engine: Optional[any] = None
+        self.session_factory: Optional[async_sessionmaker] = None
+        self.connection_pool: Optional[asyncpg.Pool] = None
         self.is_initialized = False
         
         # Connection pool settings
@@ -39,8 +39,13 @@ class DatabaseManager:
             logger.info("🔧 Initializing database connections...")
             
             # Create async engine with optimized settings
+            # Remove any SSL parameters that might conflict
+            db_url = settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
+            if '?sslmode=' in db_url:
+                db_url = db_url.split('?sslmode=')[0]
+            
             self.engine = create_async_engine(
-                settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://'),
+                db_url,
                 pool_size=self.min_connections,
                 max_overflow=self.max_connections - self.min_connections,
                 pool_timeout=self.pool_timeout,
@@ -62,10 +67,12 @@ class DatabaseManager:
             # Create tables if they don't exist
             await self._create_tables()
             
+            # Mark as initialized before calling methods that use get_session()
+            self.is_initialized = True
+            
             # Initialize default data
             await self._initialize_default_data()
             
-            self.is_initialized = True
             logger.info("✅ Database initialized successfully")
             
         except Exception as e:
@@ -75,16 +82,14 @@ class DatabaseManager:
     async def _create_connection_pool(self):
         """Create asyncpg connection pool for raw queries"""
         try:
-            # Parse database URL for asyncpg
-            import urllib.parse
-            parsed = urllib.parse.urlparse(settings.DATABASE_URL)
+            # Use direct database URL with asyncpg (it handles SSL automatically)
+            # Remove sslmode parameter if present to avoid conflicts
+            db_url = settings.DATABASE_URL
+            if '?sslmode=' in db_url:
+                db_url = db_url.split('?sslmode=')[0]
             
             self.connection_pool = await asyncpg.create_pool(
-                user=parsed.username,
-                password=parsed.password,
-                database=parsed.path[1:],
-                host=parsed.hostname,
-                port=parsed.port or 5432,
+                dsn=db_url,
                 min_size=self.min_connections,
                 max_size=self.max_connections,
                 command_timeout=60,
@@ -102,6 +107,8 @@ class DatabaseManager:
     async def _create_tables(self):
         """Create database tables if they don't exist"""
         try:
+            if self.engine is None:
+                raise RuntimeError("Database engine not initialized")
             async with self.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             
@@ -182,7 +189,7 @@ class DatabaseManager:
     @asynccontextmanager
     async def get_session(self):
         """Get database session with automatic cleanup"""
-        if not self.is_initialized:
+        if not self.is_initialized or self.session_factory is None:
             raise RuntimeError("Database not initialized")
         
         async with self.session_factory() as session:
@@ -198,11 +205,11 @@ class DatabaseManager:
     async def create_or_update_user(
         self,
         user_id: int,
-        username: str = None,
-        first_name: str = None,
-        last_name: str = None,
-        chat_id: int = None
-    ) -> User:
+        username: Optional[str] = None,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        chat_id: Optional[int] = None
+    ) -> Dict[str, Any]:
         """Create or update user in database"""
         try:
             async with self.get_session() as session:
@@ -264,7 +271,30 @@ class DatabaseManager:
                     user_data = result.fetchone()
                 
                 await session.commit()
-                return user_data
+                
+                # Convert asyncpg Row to dict properly
+                if user_data:
+                    return {
+                        'id': user_data[0] if len(user_data) > 0 else None,
+                        'user_id': user_data[1] if len(user_data) > 1 else None,
+                        'username': user_data[2] if len(user_data) > 2 else None,
+                        'first_name': user_data[3] if len(user_data) > 3 else None,
+                        'last_name': user_data[4] if len(user_data) > 4 else None,
+                        'chat_id': user_data[5] if len(user_data) > 5 else None,
+                        'settings': user_data[6] if len(user_data) > 6 else {},
+                        'total_downloads': user_data[7] if len(user_data) > 7 else 0,
+                        'successful_downloads': user_data[8] if len(user_data) > 8 else 0,
+                        'failed_downloads': user_data[9] if len(user_data) > 9 else 0,
+                        'total_bytes_downloaded': user_data[10] if len(user_data) > 10 else 0,
+                        'total_bytes_uploaded': user_data[11] if len(user_data) > 11 else 0,
+                        'created_at': user_data[12] if len(user_data) > 12 else None,
+                        'updated_at': user_data[13] if len(user_data) > 13 else None,
+                        'last_active': user_data[14] if len(user_data) > 14 else None,
+                        'is_premium': user_data[15] if len(user_data) > 15 else False,
+                        'premium_expires': user_data[16] if len(user_data) > 16 else None
+                    }
+                else:
+                    return {}
                 
         except Exception as e:
             logger.error(f"❌ Failed to create/update user {user_id}: {e}")
@@ -324,7 +354,7 @@ class DatabaseManager:
                 await session.commit()
                 
                 logger.info(f"✅ Created download record {download_id} for task {task_id}")
-                return download_id
+                return int(download_id) if download_id else 0
                 
         except Exception as e:
             logger.error(f"❌ Failed to create download record: {e}")
@@ -334,13 +364,13 @@ class DatabaseManager:
         self,
         task_id: str,
         status: str,
-        download_time: float = None,
-        upload_time: float = None,
-        download_speed: float = None,
-        upload_speed: float = None,
-        error_message: str = None,
-        telegram_message_id: int = None,
-        telegram_chat_id: int = None
+        download_time: Optional[float] = None,
+        upload_time: Optional[float] = None,
+        download_speed: Optional[float] = None,
+        upload_speed: Optional[float] = None,
+        error_message: Optional[str] = None,
+        telegram_message_id: Optional[int] = None,
+        telegram_chat_id: Optional[int] = None
     ):
         """Update download progress in database"""
         try:
@@ -394,6 +424,8 @@ class DatabaseManager:
     async def get_user_stats(self, user_id: int) -> Dict[str, Any]:
         """Get comprehensive user statistics"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 # Get basic user stats
                 user_stats = await conn.fetchrow("""
@@ -446,6 +478,8 @@ class DatabaseManager:
     async def get_user_settings(self, user_id: int) -> Dict[str, Any]:
         """Get user settings"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 result = await conn.fetchrow(
                     "SELECT settings FROM users WHERE user_id = $1",
@@ -474,6 +508,8 @@ class DatabaseManager:
     async def update_user_settings(self, user_id: int, settings_update: Dict[str, Any]):
         """Update user settings"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 # Get current settings
                 current_settings = await self.get_user_settings(user_id)
@@ -496,6 +532,8 @@ class DatabaseManager:
     async def get_global_stats(self) -> Dict[str, Any]:
         """Get global bot statistics"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 # Get user statistics
                 user_stats = await conn.fetchrow("""
@@ -544,6 +582,8 @@ class DatabaseManager:
     async def get_database_stats(self) -> Dict[str, Any]:
         """Get database performance statistics"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 # Check connection
                 await conn.fetchval("SELECT 1")
@@ -587,6 +627,8 @@ class DatabaseManager:
     async def cleanup_old_records(self, days: int = 30):
         """Clean up old records to maintain performance"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
             async with self.connection_pool.acquire() as conn:
@@ -621,16 +663,18 @@ class DatabaseManager:
         self,
         error_type: str,
         error_message: str,
-        error_traceback: str = None,
-        user_id: int = None,
-        url: str = None,
-        platform: str = None,
-        task_id: str = None,
+        error_traceback: Optional[str] = None,
+        user_id: Optional[int] = None,
+        url: Optional[str] = None,
+        platform: Optional[str] = None,
+        task_id: Optional[str] = None,
         severity: str = 'error',
-        request_data: Dict = None
+        request_data: Optional[Dict[str, Any]] = None
     ):
         """Log error to database"""
         try:
+            if self.connection_pool is None:
+                raise RuntimeError("Connection pool not initialized")
             async with self.connection_pool.acquire() as conn:
                 await conn.execute("""
                     INSERT INTO error_logs 
@@ -648,9 +692,14 @@ class DatabaseManager:
         try:
             if self.connection_pool:
                 await self.connection_pool.close()
+                self.connection_pool = None
             
             if self.engine:
                 await self.engine.dispose()
+                self.engine = None
+            
+            self.session_factory = None
+            self.is_initialized = False
             
             logger.info("🔌 Database connections closed")
             

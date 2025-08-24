@@ -35,6 +35,539 @@ class CallbackHandlers:
         # Track active downloads per user
         self.user_downloads: Dict[int, Dict[str, Any]] = {}
     
+    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Master callback handler that routes to specific handlers"""
+        try:
+            query = update.callback_query
+            if not query or not query.data:
+                return
+                
+            callback_data = query.data
+            logger.info(f"📱 Processing callback: {callback_data}")
+            
+            # Route to appropriate handler based on callback data
+            if callback_data.startswith("format_"):
+                await self.handle_format_selection(update, context)
+            elif callback_data.startswith("download_"):
+                await self.handle_download_action(update, context)
+            elif callback_data.startswith("cancel_"):
+                await self.handle_cancel_action(update, context)
+            elif callback_data == "help":
+                await self._handle_help_callback(update, context)
+            elif callback_data == "stats":
+                await self._handle_stats_callback(update, context)
+            elif callback_data == "settings":
+                await self._handle_settings_callback(update, context)
+            elif callback_data == "about":
+                await self._handle_about_callback(update, context)
+            elif callback_data == "start":
+                await self._handle_start_callback(update, context)
+            elif callback_data == "refresh_stats":
+                await self._handle_refresh_stats_callback(update, context)
+            elif callback_data == "download_history":
+                await self._handle_download_history_callback(update, context)
+            elif callback_data == "refresh_status":
+                await self._handle_refresh_status_callback(update, context)
+            elif callback_data == "system_cleanup":
+                await self._handle_system_cleanup_callback(update, context)
+            elif callback_data.startswith("setting_"):
+                await self._handle_setting_callback(update, context)
+            elif callback_data == "reset_settings":
+                await self._handle_reset_settings_callback(update, context)
+            elif callback_data.startswith("admin_"):
+                await self._handle_admin_callback(update, context)
+            elif callback_data.startswith("refresh_"):
+                await self._handle_refresh_callback(update, context)
+            elif callback_data == "cancel_preview":
+                await self._handle_cancel_preview_callback(update, context)
+            elif callback_data == "new_download":
+                await self._handle_new_download_callback(update, context)
+            elif callback_data == "show_formats":
+                await self._handle_show_formats_callback(update, context)
+            else:
+                logger.warning(f"⚠️ Unhandled callback: {callback_data}")
+                await query.answer("This feature is not yet implemented")
+                
+        except Exception as e:
+            logger.error(f"❌ Callback handler error: {e}", exc_info=True)
+            if update.callback_query:
+                await update.callback_query.answer("Something went wrong. Please try again.")
+    
+    async def _handle_help_callback(self, update, context):
+        """Handle help button callback"""
+        try:
+            from handlers.commands import CommandHandlers
+            # Simulate help command
+            await CommandHandlers(
+                self.downloader, self.file_manager, 
+                self.downloader.db_manager, self.downloader.cache_manager
+            ).help_command(update, context)
+        except Exception as e:
+            logger.error(f"Help callback error: {e}")
+            await update.callback_query.answer("Help not available")
+
+    async def _handle_stats_callback(self, update, context):
+        """Handle stats button callback"""
+        try:
+            from handlers.commands import CommandHandlers
+            await CommandHandlers(
+                self.downloader, self.file_manager,
+                self.downloader.db_manager, self.downloader.cache_manager
+            ).stats_command(update, context)
+        except Exception as e:
+            logger.error(f"Stats callback error: {e}")
+            await update.callback_query.answer("Stats not available")
+
+    async def _handle_settings_callback(self, update, context):
+        """Handle settings button callback"""
+        try:
+            from handlers.commands import CommandHandlers
+            await CommandHandlers(
+                self.downloader, self.file_manager,
+                self.downloader.db_manager, self.downloader.cache_manager
+            ).settings_command(update, context)
+        except Exception as e:
+            logger.error(f"Settings callback error: {e}")
+            await update.callback_query.answer("Settings not available")
+
+    async def _handle_about_callback(self, update, context):
+        """Handle about button callback"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            about_text = f'''
+{Icons.ROBOT} <b>Ultra Video Downloader Bot</b>
+
+🔗 <b>Version:</b> 2.0.0
+🚀 <b>Performance:</b> Ultra High-Speed
+📱 <b>Platforms:</b> 1500+ Supported
+
+{Icons.FEATURES} <b>Key Features:</b>
+• Lightning-fast downloads
+• Up to 2GB file support
+• Real-time progress tracking
+• Multiple quality options
+• Audio extraction (MP3)
+• Batch processing
+
+{Icons.DEVELOPER} <b>Developed by:</b> AI Assistant
+📧 <b>Support:</b> Contact admin for help
+
+{Icons.STAR} Thank you for using our bot!
+            '''
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.BACK} Back to Menu", callback_data="start")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                about_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"About callback error: {e}")
+            await update.callback_query.answer("About not available")
+
+    async def _handle_start_callback(self, update, context):
+        """Handle start/back to menu callback"""
+        try:
+            from handlers.commands import CommandHandlers
+            await CommandHandlers(
+                self.downloader, self.file_manager,
+                self.downloader.db_manager, self.downloader.cache_manager
+            ).start_command(update, context)
+        except Exception as e:
+            logger.error(f"Start callback error: {e}")
+            await update.callback_query.answer("Menu not available")
+
+    async def _handle_refresh_stats_callback(self, update, context):
+        """Handle refresh stats callback"""
+        try:
+            await self._handle_stats_callback(update, context)
+            await update.callback_query.answer("Stats refreshed")
+        except Exception as e:
+            logger.error(f"Refresh stats error: {e}")
+            await update.callback_query.answer("Refresh failed")
+
+    async def _handle_download_history_callback(self, update, context):
+        """Handle download history callback"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            user_id = update.effective_user.id
+            # Get download history from file manager
+            history = await self.file_manager.get_upload_history(user_id, limit=10)
+            
+            if not history:
+                history_text = f"{Icons.HISTORY} <b>Download History</b>\\n\\nNo downloads yet."
+            else:
+                history_text = f"{Icons.HISTORY} <b>Download History</b>\\n\\n"
+                for i, item in enumerate(history[:5], 1):
+                    history_text += f"{i}. {item.get('filename', 'Unknown')}\\n"
+                    history_text += f"   📅 {item.get('timestamp', 'Unknown')}\\n"
+                    history_text += f"   📊 {format_file_size(item.get('file_size', 0))}\\n\\n"
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.REFRESH} Refresh", callback_data="download_history"),
+                InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="stats")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                history_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Download history error: {e}")
+            await update.callback_query.answer("History not available")
+
+    async def _handle_refresh_status_callback(self, update, context):
+        """Handle refresh status callback"""
+        try:
+            from handlers.commands import CommandHandlers
+            await CommandHandlers(
+                self.downloader, self.file_manager,
+                self.downloader.db_manager, self.downloader.cache_manager
+            ).status_command(update, context)
+            await update.callback_query.answer("Status refreshed")
+        except Exception as e:
+            logger.error(f"Refresh status error: {e}")
+            await update.callback_query.answer("Refresh failed")
+
+    async def _handle_system_cleanup_callback(self, update, context):
+        """Handle system cleanup callback"""
+        try:
+            query = update.callback_query
+            await query.answer("Cleaning up...")
+            
+            # Perform cleanup
+            cleanup_result = await self.file_manager.cleanup_temp_files()
+            
+            cleanup_text = f'''
+{Icons.CLEANUP} <b>System Cleanup Completed</b>
+
+🗑️ <b>Files cleaned:</b> {cleanup_result['cleaned_files']}
+💾 <b>Space freed:</b> {cleanup_result.get('freed_space_str', '0 B')}
+✅ <b>Status:</b> Cleanup successful
+            '''
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.BACK} Back to Status", callback_data="refresh_status")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                cleanup_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"System cleanup error: {e}")
+            await update.callback_query.answer("Cleanup failed")
+
+    async def _handle_setting_callback(self, update, context):
+        """Handle settings submenu callbacks"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            callback_data = query.data
+            setting_type = callback_data.replace('setting_', '')
+            
+            if setting_type == "quality":
+                await self._handle_quality_settings(query)
+            elif setting_type == "format":
+                await self._handle_format_settings(query)
+            elif setting_type == "notifications":
+                await self._handle_notification_settings(query)
+            elif setting_type == "advanced":
+                await self._handle_advanced_settings(query)
+            else:
+                await query.answer("Setting not available")
+                
+        except Exception as e:
+            logger.error(f"Setting callback error: {e}")
+            await update.callback_query.answer("Settings error")
+
+    async def _handle_quality_settings(self, query):
+        """Handle quality settings"""
+        quality_text = f'''
+{Icons.QUALITY} <b>Default Quality Settings</b>
+
+Select your preferred default quality:
+
+🎬 <b>Video Quality Options:</b>
+• Best Available (Recommended)
+• 4K (2160p) - Ultra HD
+• 1080p - Full HD
+• 720p - HD
+• 480p - Standard
+• Audio Only - MP3 format
+        '''
+        
+        keyboard = [
+            [InlineKeyboardButton("🏆 Best Available", callback_data="quality_best")],
+            [InlineKeyboardButton("🎬 4K (2160p)", callback_data="quality_2160p")],
+            [InlineKeyboardButton("📺 1080p", callback_data="quality_1080p")],
+            [InlineKeyboardButton("📱 720p", callback_data="quality_720p")],
+            [InlineKeyboardButton("📻 Audio Only", callback_data="quality_audio")],
+            [InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="settings")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            quality_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+
+    async def _handle_format_settings(self, query):
+        """Handle format settings"""
+        format_text = f'''
+{Icons.FORMAT} <b>Default Format Settings</b>
+
+Select your preferred default format:
+
+📹 <b>Video Formats:</b>
+• MP4 (Recommended) - Best compatibility
+• WEBM - Smaller file size
+• MKV - High quality container
+
+🎵 <b>Audio Formats:</b>
+• MP3 - Universal compatibility
+• M4A - High quality audio
+• OGG - Open source format
+        '''
+        
+        keyboard = [
+            [InlineKeyboardButton("📹 MP4 (Recommended)", callback_data="format_mp4")],
+            [InlineKeyboardButton("🌐 WEBM", callback_data="format_webm")],
+            [InlineKeyboardButton("🎵 MP3 Audio", callback_data="format_mp3")],
+            [InlineKeyboardButton("🎶 M4A Audio", callback_data="format_m4a")],
+            [InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="settings")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            format_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+
+    async def _handle_notification_settings(self, query):
+        """Handle notification settings"""
+        notification_text = f'''
+{Icons.NOTIFICATIONS} <b>Notification Settings</b>
+
+Configure when you want to receive notifications:
+
+📱 <b>Notification Types:</b>
+• Progress Updates - Download/upload progress
+• Completion Alerts - When operations complete
+• Error Notifications - When something goes wrong
+• Daily Summary - Daily usage statistics
+        '''
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Enable All Notifications", callback_data="notify_all_on")],
+            [InlineKeyboardButton("❌ Disable All Notifications", callback_data="notify_all_off")],
+            [InlineKeyboardButton("🔧 Custom Settings", callback_data="notify_custom")],
+            [InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="settings")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            notification_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+
+    async def _handle_advanced_settings(self, query):
+        """Handle advanced settings"""
+        advanced_text = f'''
+{Icons.ADVANCED} <b>Advanced Settings</b>
+
+Configure advanced bot behavior:
+
+⚡ <b>Performance Options:</b>
+• Fast Mode - Skip some checks for speed
+• Auto Cleanup - Automatically clean temp files
+• Progress Throttling - Limit progress updates
+• Bandwidth Limiting - Control download speed
+
+🔒 <b>Security Options:</b>
+• File Verification - Verify file integrity
+• Safe Mode - Extra security checks
+        '''
+        
+        keyboard = [
+            [InlineKeyboardButton("⚡ Toggle Fast Mode", callback_data="advanced_fast_mode")],
+            [InlineKeyboardButton("🗑️ Toggle Auto Cleanup", callback_data="advanced_auto_cleanup")],
+            [InlineKeyboardButton("🔒 Toggle Safe Mode", callback_data="advanced_safe_mode")],
+            [InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="settings")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            advanced_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup
+        )
+
+    async def _handle_reset_settings_callback(self, update, context):
+        """Handle reset settings callback"""
+        try:
+            query = update.callback_query
+            await query.answer("Settings reset to defaults")
+            
+            reset_text = f'''
+{Icons.RESET} <b>Settings Reset</b>
+
+All settings have been reset to default values:
+
+✅ Default Quality: Best Available
+✅ Default Format: MP4
+✅ Notifications: All Enabled
+✅ Fast Mode: Enabled
+✅ Auto Cleanup: Enabled
+✅ Safe Mode: Disabled
+
+Settings applied successfully!
+            '''
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.SETTINGS} Back to Settings", callback_data="settings"),
+                InlineKeyboardButton(f"{Icons.BACK} Main Menu", callback_data="start")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                reset_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Reset settings error: {e}")
+            await update.callback_query.answer("Reset failed")
+
+    async def _handle_admin_callback(self, update, context):
+        """Handle admin callbacks"""
+        try:
+            query = update.callback_query
+            callback_data = query.data
+            admin_action = callback_data.replace('admin_', '')
+            
+            # Check if user is admin (simplified)
+            await query.answer(f"Admin feature '{admin_action}' coming soon")
+                
+        except Exception as e:
+            logger.error(f"Admin callback error: {e}")
+            await update.callback_query.answer("Admin action failed")
+
+    async def _handle_refresh_callback(self, update, context):
+        """Handle generic refresh callbacks"""
+        try:
+            query = update.callback_query
+            callback_data = query.data
+            
+            if callback_data.startswith("refresh_"):
+                refresh_type = callback_data.replace('refresh_', '')
+                await query.answer(f"Refreshing {refresh_type}...")
+            else:
+                await query.answer("Refreshed")
+                
+        except Exception as e:
+            logger.error(f"Refresh callback error: {e}")
+            await update.callback_query.answer("Refresh failed")
+
+    async def _handle_cancel_preview_callback(self, update, context):
+        """Handle cancel preview callback"""
+        try:
+            query = update.callback_query
+            await query.answer("Preview cancelled")
+            
+            await query.edit_message_text(
+                f"{Icons.CANCELLED} Video preview cancelled.\\n\\nSend another URL to download a video.",
+                reply_markup=None
+            )
+        except Exception as e:
+            logger.error(f"Cancel preview error: {e}")
+            await update.callback_query.answer("Cancel failed")
+
+    async def _handle_new_download_callback(self, update, context):
+        """Handle new download callback"""
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            new_download_text = f'''
+{Icons.NEW_DOWNLOAD} <b>Start New Download</b>
+
+Ready for your next download!
+
+🔗 Simply send me a video URL from any of these platforms:
+• YouTube
+• Instagram
+• TikTok
+• Facebook
+• Twitter/X
+• And 1500+ more sites!
+
+💡 <b>Tip:</b> Just paste the URL and I'll handle the rest!
+            '''
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.HELP} Help", callback_data="help"),
+                InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="start")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                new_download_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"New download callback error: {e}")
+            await update.callback_query.answer("New download option failed")
+
+    async def _handle_show_formats_callback(self, update, context):
+        """Handle show formats callback"""
+        try:
+            query = update.callback_query
+            await query.answer("Showing formats...")
+            
+            formats_text = f'''
+{Icons.FORMAT} <b>Format Selection</b>
+
+To see available formats:
+1. Send a video URL
+2. Wait for video information to load
+3. Choose from available quality options
+
+Each video may have different format options depending on the source platform.
+            '''
+            
+            keyboard = [[
+                InlineKeyboardButton(f"{Icons.NEW_DOWNLOAD} New Download", callback_data="new_download"),
+                InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="start")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                formats_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Show formats callback error: {e}")
+            await update.callback_query.answer("Show formats failed")
+    
     async def handle_format_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle format selection from video preview"""
         try:

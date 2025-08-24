@@ -200,7 +200,13 @@ class RateLimitMiddleware:
             
             if cached_requests:
                 import json
-                request_times = json.loads(cached_requests)
+                # Ensure cached_requests is a string before parsing
+                if isinstance(cached_requests, str):
+                    request_times = json.loads(cached_requests)
+                elif isinstance(cached_requests, list):
+                    request_times = cached_requests
+                else:
+                    request_times = []
             else:
                 request_times = []
             
@@ -246,7 +252,13 @@ class RateLimitMiddleware:
             
             if cached_requests:
                 import json
-                request_times = json.loads(cached_requests)
+                # Ensure cached_requests is a string before parsing
+                if isinstance(cached_requests, str):
+                    request_times = json.loads(cached_requests)
+                elif isinstance(cached_requests, list):
+                    request_times = cached_requests
+                else:
+                    request_times = []
             else:
                 request_times = []
             
@@ -255,6 +267,7 @@ class RateLimitMiddleware:
             request_times = [t for t in request_times if t > cutoff_time]
             
             # Save back to cache
+            import json
             await self.cache_manager.set(
                 requests_key,
                 json.dumps(request_times),

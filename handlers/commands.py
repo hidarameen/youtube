@@ -42,6 +42,10 @@ class CommandHandlers:
             user = update.effective_user
             chat = update.effective_chat
             
+            if not user or not chat:
+                logger.error("❌ No user or chat in update")
+                return
+                
             logger.info(f"📱 Start command from user {user.id} in chat {chat.id}")
             
             # Register user in database
@@ -69,18 +73,20 @@ class CommandHandlers:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await update.message.reply_text(
-                welcome_msg,
-                parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
-                disable_web_page_preview=True
-            )
+            if update.message:
+                await update.message.reply_text(
+                    welcome_msg,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True
+                )
             
         except Exception as e:
             logger.error(f"❌ Start command error: {e}", exc_info=True)
-            await update.message.reply_text(
-                f"{Icons.ERROR} Sorry, something went wrong. Please try again."
-            )
+            if update.message:
+                await update.message.reply_text(
+                    f"{Icons.ERROR} Sorry, something went wrong. Please try again."
+                )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
@@ -139,23 +145,29 @@ class CommandHandlers:
                     disable_web_page_preview=True
                 )
             else:
-                await update.message.reply_text(
-                    help_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        help_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
             
         except Exception as e:
             logger.error(f"❌ Help command error: {e}", exc_info=True)
-            await update.effective_message.reply_text(
-                f"{Icons.ERROR} Sorry, couldn't load help information."
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    f"{Icons.ERROR} Sorry, couldn't load help information."
+                )
     
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stats command"""
         try:
-            user_id = update.effective_user.id
+            user = update.effective_user
+            if not user:
+                logger.error("❌ No user in update")
+                return
+            user_id = user.id
             
             # Get user statistics from database
             user_stats = await self.db_manager.get_user_stats(user_id)
@@ -221,17 +233,19 @@ class CommandHandlers:
                     reply_markup=reply_markup
                 )
             else:
-                await update.message.reply_text(
-                    stats_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        stats_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=reply_markup
+                    )
             
         except Exception as e:
             logger.error(f"❌ Stats command error: {e}", exc_info=True)
-            await update.effective_message.reply_text(
-                f"{Icons.ERROR} Sorry, couldn't load statistics."
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    f"{Icons.ERROR} Sorry, couldn't load statistics."
+                )
     
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command - show bot system status"""
@@ -298,30 +312,37 @@ class CommandHandlers:
                     reply_markup=reply_markup
                 )
             else:
-                await update.message.reply_text(
-                    status_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=reply_markup
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        status_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=reply_markup
+                    )
             
         except Exception as e:
             logger.error(f"❌ Status command error: {e}", exc_info=True)
-            await update.effective_message.reply_text(
-                f"{Icons.ERROR} Sorry, couldn't load system status."
-            )
+            if update.effective_message:
+                await update.effective_message.reply_text(
+                    f"{Icons.ERROR} Sorry, couldn't load system status."
+                )
     
     async def cancel_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /cancel command - cancel user's active operations"""
         try:
-            user_id = update.effective_user.id
+            user = update.effective_user
+            if not user:
+                logger.error("❌ No user in update")
+                return
+            user_id = user.id
             
             # Get user's active progress
             user_progress = await self.downloader.progress_tracker.get_user_progress(user_id)
             
             if user_progress['total_active'] == 0:
-                await update.message.reply_text(
-                    f"{Icons.INFO} No active downloads or uploads to cancel."
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        f"{Icons.INFO} No active downloads or uploads to cancel."
+                    )
                 return
             
             # Cancel all active downloads and uploads
@@ -338,24 +359,31 @@ class CommandHandlers:
                     cancelled_count += 1
             
             if cancelled_count > 0:
-                await update.message.reply_text(
-                    f"{Icons.SUCCESS} Cancelled {cancelled_count} active operation(s)."
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        f"{Icons.SUCCESS} Cancelled {cancelled_count} active operation(s)."
+                    )
             else:
-                await update.message.reply_text(
-                    f"{Icons.WARNING} No operations could be cancelled."
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        f"{Icons.WARNING} No operations could be cancelled."
+                    )
             
         except Exception as e:
             logger.error(f"❌ Cancel command error: {e}", exc_info=True)
-            await update.message.reply_text(
-                f"{Icons.ERROR} Sorry, couldn't cancel operations."
-            )
+            if update.message:
+                await update.message.reply_text(
+                    f"{Icons.ERROR} Sorry, couldn't cancel operations."
+                )
     
     async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /settings command"""
         try:
-            user_id = update.effective_user.id
+            user = update.effective_user
+            if not user:
+                logger.error("❌ No user in update")
+                return
+            user_id = user.id
             
             # Get user settings from database
             user_settings = await self.db_manager.get_user_settings(user_id)
@@ -420,7 +448,11 @@ Current: {user_settings.get('default_format', 'MP4')}
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle admin commands (only for admin users)"""
         try:
-            user_id = update.effective_user.id
+            user = update.effective_user
+            if not user:
+                logger.error("❌ No user in update")
+                return
+            user_id = user.id
             
             # Check if user is admin
             if user_id not in settings.ADMIN_USER_IDS:

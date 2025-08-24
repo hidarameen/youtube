@@ -49,6 +49,16 @@ class ProgressTracker:
         # Cleanup settings
         self.max_progress_age = 3600  # Keep progress for 1 hour
         
+        # Progress persistence
+        self.persist_progress = True
+        
+        # Performance monitoring
+        self.performance_metrics: Dict[str, Any] = {
+            'total_updates': 0,
+            'average_update_time': 0,
+            'peak_concurrent_tasks': 0
+        }
+        
         # Background tasks
         self.cleanup_task: Optional[asyncio.Task] = None
         
@@ -129,8 +139,8 @@ class ProgressTracker:
             # Log significant progress milestones
             if percentage > 0 and percentage % 25 == 0:
                 logger.info(f"📥 Download {task_id}: {percentage:.1f}% completed "
-                          f"({format_file_size(current_bytes)}/{format_file_size(total_bytes)}) "
-                          f"Speed: {format_file_size(speed)}/s")
+                          f"({format_file_size(int(current_bytes))}/{format_file_size(int(total_bytes))}) "
+                          f"Speed: {format_file_size(int(speed))}/s")
             
         except Exception as e:
             logger.error(f"❌ Failed to update download progress for {task_id}: {e}")
@@ -198,8 +208,8 @@ class ProgressTracker:
             # Log significant progress milestones
             if percentage > 0 and percentage % 25 == 0:
                 logger.info(f"📤 Upload {task_id}: {percentage:.1f}% completed "
-                          f"({format_file_size(current_bytes)}/{format_file_size(total_bytes)}) "
-                          f"Speed: {format_file_size(speed)}/s")
+                          f"({format_file_size(int(current_bytes))}/{format_file_size(int(total_bytes))}) "
+                          f"Speed: {format_file_size(int(speed))}/s")
             
         except Exception as e:
             logger.error(f"❌ Failed to update upload progress for {task_id}: {e}")

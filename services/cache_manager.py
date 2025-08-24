@@ -39,6 +39,13 @@ class CacheManager:
         self.retry_attempts = 3
         self.retry_delay = 1
         
+        # Cache eviction policies
+        self.max_cache_size = 500 * 1024 * 1024  # 500MB max cache
+        self.eviction_policy = 'lru'  # Least Recently Used
+        
+        # Cache warming
+        self.warm_cache_on_startup = True
+        
     async def initialize(self):
         """Initialize Redis connection with optimization"""
         try:
@@ -79,8 +86,11 @@ class CacheManager:
     async def _test_connection(self):
         """Test Redis connection"""
         try:
-            await self.redis.ping()
-            logger.info("✅ Redis connection test successful")
+            if self.redis is not None:
+                await self.redis.ping()
+                logger.info("✅ Redis connection test successful")
+            else:
+                raise RuntimeError("Redis client not initialized")
         except Exception as e:
             logger.error(f"❌ Redis connection test failed: {e}")
             raise

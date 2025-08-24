@@ -190,23 +190,10 @@ class VideoDownloaderBot:
             )
         )
         
-        # Callback query handlers
+        # Master callback query handler
         self.application.add_handler(
             CallbackQueryHandler(
-                self._with_middleware(self.callback_handlers.handle_format_selection),
-                pattern="^format_"
-            )
-        )
-        self.application.add_handler(
-            CallbackQueryHandler(
-                self._with_middleware(self.callback_handlers.handle_download_action),
-                pattern="^download_"
-            )
-        )
-        self.application.add_handler(
-            CallbackQueryHandler(
-                self._with_middleware(self.callback_handlers.handle_cancel_action),
-                pattern="^cancel_"
+                self._with_middleware(self.callback_handlers.handle_callback_query)
             )
         )
         
@@ -261,15 +248,29 @@ class VideoDownloaderBot:
         """Start the bot"""
         try:
             logger.info("🚀 Starting bot polling...")
-            await self.application.run_polling(
+            
+            # Initialize application
+            await self.application.initialize()
+            
+            # Start polling in a way compatible with existing event loop
+            await self.application.updater.start_polling(
                 allowed_updates=["message", "callback_query"],
-                drop_pending_updates=True,
-                timeout=30,
-                pool_timeout=1,
-                connect_timeout=30,
-                read_timeout=30,
-                write_timeout=30
+                drop_pending_updates=True
             )
+            
+            # Start the application
+            await self.application.start()
+            
+            logger.info("✅ Bot is now running and ready to receive messages!")
+            
+            # Keep the bot running
+            try:
+                # In Replit, we don't want to block, just keep alive
+                while True:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("📱 Received stop signal")
+                
         except Exception as e:
             logger.error(f"❌ Bot polling failed: {e}", exc_info=True)
             raise

@@ -25,10 +25,10 @@ class Settings:
     
     # Group/Chat Configuration
     ALLOWED_CHAT_IDS: List[int] = field(default_factory=lambda: [
-        int(x.strip()) for x in os.getenv("ALLOWED_CHAT_IDS", "").split(",") 
+        int(x.strip()) for x in os.getenv("ALLOWED_CHAT_IDS", "6602517122").split(",") 
         if x.strip().lstrip('-').isdigit()
     ])
-    UPLOAD_CHAT_ID: int = int(os.getenv("UPLOAD_CHAT_ID", "0"))
+    UPLOAD_CHAT_ID: int = int(os.getenv("UPLOAD_CHAT_ID", "6602517122"))
     
     # Database Configuration
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/video_bot")

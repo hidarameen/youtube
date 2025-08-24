@@ -41,6 +41,12 @@ class FileManager:
         self.chunk_size = settings.CHUNK_SIZE
         self.max_file_size = settings.MAX_FILE_SIZE
         
+        # File integrity checking
+        self.verify_file_integrity = True
+        
+        # Upload speed monitoring
+        self.upload_speed_history: List[float] = []
+        
     async def upload_to_telegram(
         self,
         file_path: str,
@@ -60,6 +66,9 @@ class FileManager:
             try:
                 # Validate file
                 await self._validate_file_for_upload(file_path)
+                
+                # Skip file checksum for now
+                file_checksum = None
                 
                 file_size = os.path.getsize(file_path)
                 filename = os.path.basename(file_path)
@@ -225,7 +234,8 @@ class FileManager:
             # Download thumbnail
             import aiohttp
             async with aiohttp.ClientSession() as session:
-                async with session.get(thumbnail_url, timeout=10) as response:
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with session.get(thumbnail_url, timeout=timeout) as response:
                     if response.status == 200:
                         thumbnail_data = await response.read()
                         

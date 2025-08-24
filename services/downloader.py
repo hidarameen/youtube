@@ -32,71 +32,97 @@ class VideoDownloader:
         self.download_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_DOWNLOADS)
         self.executor = ThreadPoolExecutor(max_workers=settings.MAX_CONCURRENT_DOWNLOADS * 2)
         
+        # Initialize retry mechanism
+        self.retry_attempts = 3
+        self.retry_delay = 2
+        
         # Download statistics
         self.download_stats: Dict[str, Any] = {}
+        
+        # Bandwidth limiting
+        self.bandwidth_limit = settings.MAX_DOWNLOAD_BANDWIDTH if hasattr(settings, 'MAX_DOWNLOAD_BANDWIDTH') else None
+        
+        # File integrity checking
+        self.verify_checksums = True
+        
+        # Active downloads tracking
+        self.active_downloads: Dict[str, Any] = {}
         
     async def get_video_info(self, url: str, user_id: int) -> Dict[str, Any]:
         """
         Extract video information and available formats
         Ultra-fast metadata extraction with caching
         """
-        try:
-            # Check cache first
-            cache_key = f"video_info:{hash(url)}"
-            cached_info = await self.cache_manager.get(cache_key)
-            if cached_info:
-                logger.info("✅ Video info retrieved from cache")
-                return json.loads(cached_info)
+        attempt = 0
+        while attempt < self.retry_attempts:
+            try:
+                # Check cache first
+                cache_key = f"video_info:{hash(url)}"
+                cached_info = await self.cache_manager.get(cache_key)
+                if cached_info:
+                    logger.info("✅ Video info retrieved from cache")
+                    # Handle both string and dict from cache
+                    if isinstance(cached_info, str):
+                        return json.loads(cached_info)
+                    elif isinstance(cached_info, dict):
+                        return cached_info
+                    else:
+                        logger.warning("⚠️ Invalid cache data type, re-extracting")
+                
+                # Validate URL
+                if not is_valid_url(url):
+                    raise ValueError("Invalid URL provided")
+                
+                platform = get_platform_from_url(url)
+                logger.info(f"🔍 Extracting info from {platform}: {url}")
+                
+                # Configure yt-dlp for fast info extraction
+                ydl_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'extract_flat': False,
+                    'skip_download': True,
+                    'writeinfojson': False,
+                    'writethumbnail': False,
+                    'ignoreerrors': True,
+                    'socket_timeout': 30,
+                    'retries': 2,
+                    'fragment_retries': 2,
+                }
+                
+                # Extract info in thread pool
+                loop = asyncio.get_event_loop()
+                info = await loop.run_in_executor(
+                    self.executor, 
+                    self._extract_info_sync, 
+                    url, 
+                    ydl_opts
+                )
+                
+                if not info:
+                    raise ValueError("Could not extract video information")
+                
+                # Process and format the information
+                processed_info = await self._process_video_info(info, platform or "unknown")
+                
+                # Cache the result for 1 hour
+                await self.cache_manager.set(
+                    cache_key, 
+                    json.dumps(processed_info, default=str), 
+                    expire=3600
+                )
             
-            # Validate URL
-            if not is_valid_url(url):
-                raise ValueError("Invalid URL provided")
-            
-            platform = get_platform_from_url(url)
-            logger.info(f"🔍 Extracting info from {platform}: {url}")
-            
-            # Configure yt-dlp for fast info extraction
-            ydl_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'extract_flat': False,
-                'skip_download': True,
-                'writeinfojson': False,
-                'writethumbnail': False,
-                'ignoreerrors': True,
-                'socket_timeout': 30,
-                'retries': 2,
-                'fragment_retries': 2,
-            }
-            
-            # Extract info in thread pool
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(
-                self.executor, 
-                self._extract_info_sync, 
-                url, 
-                ydl_opts
-            )
-            
-            if not info:
-                raise ValueError("Could not extract video information")
-            
-            # Process and format the information
-            processed_info = await self._process_video_info(info, platform)
-            
-            # Cache the result for 1 hour
-            await self.cache_manager.set(
-                cache_key, 
-                json.dumps(processed_info, default=str), 
-                expire=3600
-            )
-            
-            logger.info(f"✅ Video info extracted: {processed_info['title']}")
-            return processed_info
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to extract video info: {e}", exc_info=True)
-            raise
+                logger.info(f"✅ Video info extracted: {processed_info['title']}")
+                return processed_info
+                
+            except Exception as e:
+                attempt += 1
+                if attempt >= self.retry_attempts:
+                    logger.error(f"❌ Failed to extract video info after {self.retry_attempts} attempts: {e}", exc_info=True)
+                    raise
+                
+                logger.warning(f"⚠️ Video info extraction attempt {attempt} failed, retrying in {self.retry_delay}s: {e}")
+                await asyncio.sleep(self.retry_delay)
     
     def _extract_info_sync(self, url: str, ydl_opts: Dict) -> Optional[Dict]:
         """Synchronous info extraction for thread pool"""
