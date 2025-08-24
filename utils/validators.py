@@ -52,11 +52,11 @@ SUPPORTED_PLATFORMS = {
         display_name='Instagram',
         base_domains=['instagram.com', 'www.instagram.com', 'm.instagram.com'],
         url_patterns=[
-            r'instagram\.com/p/([a-zA-Z0-9_-]+)',
-            r'instagram\.com/reel/([a-zA-Z0-9_-]+)',
-            r'instagram\.com/tv/([a-zA-Z0-9_-]+)',
-            r'instagram\.com/stories/([^/]+)/(\d+)',
-            r'instagram\.com/([^/]+)/?'
+            r'instagram\.com/p/([a-zA-Z0-9_-]+)(?:\?.*)?',
+            r'instagram\.com/reel/([a-zA-Z0-9_-]+)(?:\?.*)?',
+            r'instagram\.com/tv/([a-zA-Z0-9_-]+)(?:\?.*)?',
+            r'instagram\.com/stories/([^/]+)/(\d+)(?:\?.*)?',
+            r'instagram\.com/([^/]+)/?(?:\?.*)?'
         ]
     ),
     'facebook': PlatformInfo(
@@ -68,7 +68,9 @@ SUPPORTED_PLATFORMS = {
             r'facebook\.com/([^/]+)/videos/(\d+)',
             r'facebook\.com/video\.php\?v=(\d+)',
             r'fb\.watch/([a-zA-Z0-9_-]+)',
-            r'facebook\.com/reel/(\d+)'
+            r'facebook\.com/reel/(\d+)(?:\?.*)?',
+            r'facebook\.com/share/r/([a-zA-Z0-9_-]+)/?(?:\?.*)?',
+            r'facebook\.com/share/v/([a-zA-Z0-9_-]+)/?(?:\?.*)?'
         ]
     ),
     'twitter': PlatformInfo(

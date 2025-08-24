@@ -42,6 +42,23 @@ class Icons:
     TIMER = "⏲️"
     STOPWATCH = "⏱️"
     
+    # Animated Progress Icons
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    PROGRESS_FRAMES = ["◐", "◓", "◑", "◒"]
+    PULSE_FRAMES = ["💙", "💚", "💛", "🧡", "❤️", "💜"]
+    DOWNLOAD_ANIMATION = ["📥", "📦", "📤"]
+    UPLOAD_ANIMATION = ["📤", "☁️", "✅"]
+    
+    # Special Effect Icons
+    MAGIC = "✨"
+    BOOM = "💥"
+    HEART_EYES = "😍"
+    PARTY = "🎉"
+    CELEBRATION = "🎊"
+    THUMBS_UP = "👍"
+    MUSCLE = "💪"
+    LIGHTNING = "⚡"
+    
     # Success and Error Icons
     SUCCESS = "✅"
     CHECK = "☑️"
@@ -73,6 +90,26 @@ class Icons:
     
     # Quality and Format Icons
     QUALITY = "🎯"
+    HD = "📺"
+    FOUR_K = "🎬"
+    AUDIO_ONLY = "🎵"
+    
+    # Speed and Performance Icons
+    SPEED = "🚀"
+    FAST = "⚡"
+    TURBO = "🔥"
+    MEGA_SPEED = "💨"
+    
+    # Interactive Elements
+    BUTTON = "🔘"
+    TOGGLE = "🔀"
+    SETTINGS_GEAR = "⚙️"
+    
+    # Fun Status Icons
+    WORKING = "🔧"
+    COOKING = "👨‍🍳"
+    MAGIC_WAND = "🪄"
+    CRYSTAL_BALL = "🔮"
     FORMAT = "📋"
     HD = "🔥"
     FOUR_K = "💎"

@@ -55,13 +55,23 @@ class TelethonManager:
         """Check and configure FastTelethon if available"""
         try:
             if settings.USE_FAST_TELETHON:
-                # Try to import FastTelethon
+                # Try multiple FastTelethon package names
                 global fast_upload, fast_download
-                from FastTelethon import fast_upload, fast_download
+                try:
+                    from FastTelethon import fast_upload, fast_download
+                except ImportError:
+                    try:
+                        from fast_telethon import fast_upload, fast_download
+                    except ImportError:
+                        # If FastTelethon not available, optimize standard Telethon
+                        logger.warning("⚠️ FastTelethon not available, using optimized standard Telethon")
+                        self.fast_telethon_available = False
+                        return
+                
                 self.fast_telethon_available = True
                 logger.info("🚀 FastTelethon enabled for enhanced performance")
-        except ImportError:
-            logger.warning("⚠️ FastTelethon not available, using standard Telethon")
+        except Exception as e:
+            logger.warning(f"⚠️ FastTelethon check failed: {e}, using optimized standard Telethon")
             self.fast_telethon_available = False
     
     async def _create_client(self):
@@ -74,15 +84,18 @@ class TelethonManager:
             settings.API_ID,
             settings.API_HASH,
             connection_retries=settings.CONNECTION_RETRIES,
-            retry_delay=2,
+            retry_delay=1,  # Faster retry
             timeout=settings.REQUEST_TIMEOUT,
-            request_retries=3,
-            flood_sleep_threshold=60,
-            device_model="VideoBot",
-            system_version="1.0",
-            app_version="1.0",
+            request_retries=2,  # Reduced for faster failures
+            flood_sleep_threshold=30,  # Reduced flood threshold
+            device_model="VideoBot Ultra",
+            system_version="2.0",
+            app_version="2.0",
             lang_code="en",
-            system_lang_code="en"
+            system_lang_code="en",
+            # Additional optimizations
+            auto_reconnect=True,
+            sequential_updates=False  # Allow parallel updates
         )
     
     async def _connect_and_auth(self):
@@ -149,7 +162,7 @@ class TelethonManager:
                     caption=caption,
                     attributes=attributes,
                     thumb=thumbnail,
-                    force_document=file_size > 50 * 1024 * 1024,  # Force document for files > 50MB
+                    force_document=file_size > 10 * 1024 * 1024,  # Force document for files > 10MB (faster)
                     parse_mode='HTML'
                 )
                 
@@ -169,17 +182,20 @@ class TelethonManager:
         """Upload file with progress tracking and optimization"""
         
         if self.fast_telethon_available and settings.USE_FAST_TELETHON:
-            # Use FastTelethon for enhanced speed
+            # Use FastTelethon for enhanced speed with optimized workers
             return await fast_upload(
                 self.client,
                 file_path,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                workers=getattr(settings, 'UPLOAD_WORKERS', 8),  # Use multiple workers
+                part_size_kb=512  # 512KB parts (max allowed)
             )
         else:
-            # Use standard Telethon upload with progress
+            # Use standard Telethon upload with optimized chunk size
             return await self.client.upload_file(
                 file_path,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                part_size_kb=512  # 512KB parts (max allowed)
             )
     
     async def _prepare_attributes(self, file_path: str, video_metadata: Optional[Dict] = None):

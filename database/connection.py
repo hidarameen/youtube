@@ -453,14 +453,35 @@ class DatabaseManager:
                     WHERE user_id = $1 AND status = 'completed'
                 """, user_id)
                 
-                # Calculate success rate
+                # Calculate success rate (handle null values)
                 success_rate = 0
-                if user_stats['total_downloads'] > 0:
-                    success_rate = (user_stats['successful_downloads'] / user_stats['total_downloads']) * 100
+                total_downloads = user_stats['total_downloads'] or 0
+                successful_downloads = user_stats['successful_downloads'] or 0
                 
-                # Combine all stats
-                stats = dict(user_stats)
-                stats.update(dict(advanced_stats) if advanced_stats else {})
+                if total_downloads > 0:
+                    success_rate = (successful_downloads / total_downloads) * 100
+                
+                # Combine all stats (handle null values)
+                stats = {}
+                for key, value in dict(user_stats).items():
+                    stats[key] = value if value is not None else 0
+                
+                # Add advanced stats with null handling
+                if advanced_stats:
+                    for key, value in dict(advanced_stats).items():
+                        stats[key] = value if value is not None else 0
+                else:
+                    # Set default values for missing advanced stats
+                    stats.update({
+                        'avg_download_speed': 0,
+                        'avg_upload_speed': 0, 
+                        'fastest_download_speed': 0,
+                        'avg_processing_time': 0,
+                        'total_download_time': 0,
+                        'total_upload_time': 0,
+                        'avg_file_size': 0
+                    })
+                
                 stats['success_rate'] = success_rate
                 
                 # Format timestamps

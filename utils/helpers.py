@@ -241,10 +241,11 @@ def create_format_selection_keyboard(video_info: Dict, video_id: str):
     return keyboard
 
 def create_download_progress_message(progress: Dict, video_info: Dict) -> str:
-    """Create formatted download progress message"""
+    """Create animated formatted download progress message"""
     from static.icons import Icons
+    import time
     
-    title = truncate_text(video_info.get('title', 'Unknown'), 50)
+    title = truncate_text(video_info.get('title', 'Unknown'), 45)
     current_str = progress.get('current_str', '0 B')
     total_str = progress.get('total_str', '0 B')
     percentage = progress.get('percentage', 0)
@@ -252,27 +253,69 @@ def create_download_progress_message(progress: Dict, video_info: Dict) -> str:
     eta_str = progress.get('eta_str', 'Unknown')
     progress_bar = progress.get('progress_bar', '[░░░░░░░░░░] 0.0%')
     status = progress.get('status', 'unknown')
+    task_id = progress.get('task_id', '')
     
-    status_icons = {
-        'downloading': Icons.DOWNLOAD,
-        'uploading': Icons.UPLOAD,
-        'completed': Icons.SUCCESS,
-        'failed': Icons.ERROR,
-        'cancelled': Icons.CANCELLED
+    # Animated status icons based on current status
+    status_configs = {
+        'downloading': {
+            'icon': Icons.DOWNLOAD_ANIMATION[int(time.time()) % len(Icons.DOWNLOAD_ANIMATION)],
+            'title': 'تحميل جاري',
+            'color': '🟦'
+        },
+        'uploading': {
+            'icon': Icons.UPLOAD_ANIMATION[int(time.time()) % len(Icons.UPLOAD_ANIMATION)],
+            'title': 'رفع جاري',
+            'color': '🟨'
+        },
+        'completed': {
+            'icon': Icons.PARTY,
+            'title': 'تم بنجاح!',
+            'color': '🟩'
+        },
+        'failed': {
+            'icon': Icons.ERROR,
+            'title': 'فشل',
+            'color': '🟥'
+        },
+        'cancelled': {
+            'icon': Icons.STOP,
+            'title': 'ملغي',
+            'color': '⬜'
+        }
     }
     
-    status_icon = status_icons.get(status, Icons.PROGRESS)
+    config = status_configs.get(status, {
+        'icon': Icons.PROGRESS,
+        'title': status.title(),
+        'color': '⬜'
+    })
+    
+    # Add motivational messages for different percentages
+    motivational = ""
+    if status == 'downloading' and percentage > 0:
+        if percentage < 25:
+            motivational = f"{Icons.ROCKET} البداية دائماً صعبة!"
+        elif percentage < 50:
+            motivational = f"{Icons.MUSCLE} نصف الطريق! استمر!"
+        elif percentage < 75:
+            motivational = f"{Icons.FIRE} الأمور تسير بشكل رائع!"
+        elif percentage < 95:
+            motivational = f"{Icons.LIGHTNING} تقريباً انتهينا!"
+        else:
+            motivational = f"{Icons.MAGIC} اللمسة الأخيرة..."
     
     return f"""
-{status_icon} <b>{status.title()}</b>
+{config['color']} <b>{config['icon']} {config['title']}</b>
 
-{Icons.VIDEO} <b>Title:</b> {title}
-{Icons.PROGRESS} <b>Progress:</b> {current_str} / {total_str}
+{Icons.VIDEO} <b>العنوان:</b> {title}
+{Icons.MAGIC} <b>التقدم:</b> {current_str} / {total_str}
 
 {progress_bar}
 
-{Icons.SPEED} <b>Speed:</b> {speed_str}
-{Icons.TIME} <b>ETA:</b> {eta_str}
+{Icons.TURBO} <b>السرعة:</b> {speed_str}
+{Icons.CLOCK} <b>الوقت المتبقي:</b> {eta_str}
+
+{motivational}
     """
 
 def setup_logging():
@@ -414,11 +457,28 @@ def safe_float(value: Any, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
-def create_progress_bar(percentage: float, length: int = 20, filled: str = '█', empty: str = '░') -> str:
-    """Create visual progress bar"""
+def create_progress_bar(percentage: float, length: int = 20, filled: str = '█', empty: str = '░', animated: bool = True) -> str:
+    """Create animated visual progress bar"""
+    from static.icons import Icons
+    import time
+    
     filled_length = int(length * percentage / 100)
-    bar = filled * filled_length + empty * (length - filled_length)
-    return f"[{bar}] {percentage:.1f}%"
+    
+    if animated and percentage < 100:
+        # Add animation to the progress edge
+        spinner_frame = Icons.SPINNER_FRAMES[int(time.time() * 3) % len(Icons.SPINNER_FRAMES)]
+        if filled_length > 0:
+            bar = filled * (filled_length - 1) + spinner_frame + empty * (length - filled_length)
+        else:
+            bar = spinner_frame + empty * (length - 1)
+    else:
+        bar = filled * filled_length + empty * (length - filled_length)
+    
+    # Add percentage with special formatting
+    if percentage >= 100:
+        return f"[{bar}] {Icons.SUCCESS} 100%"
+    else:
+        return f"[{bar}] {percentage:.1f}%"
 
 def get_mime_type(file_path: str) -> str:
     """Get MIME type of file"""

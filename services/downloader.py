@@ -185,7 +185,7 @@ class VideoDownloader:
             if f.get('vcodec') != 'none' and f.get('height')
         ]
         
-        # Group by quality and select best
+        # Group by quality and select best (prioritize MP4)
         quality_groups = {}
         for fmt in video_formats:
             height = fmt.get('height', 0)
@@ -193,8 +193,31 @@ class VideoDownloader:
             
             if height >= 144:  # Minimum quality
                 key = f"{height}p"
-                if key not in quality_groups or fmt.get('tbr', 0) > quality_groups[key].get('tbr', 0):
+                
+                # If no format exists for this quality, add it
+                if key not in quality_groups:
                     quality_groups[key] = fmt
+                else:
+                    current_fmt = quality_groups[key]
+                    current_ext = current_fmt.get('ext', '')
+                    current_tbr = current_fmt.get('tbr', 0)
+                    new_tbr = fmt.get('tbr', 0)
+                    
+                    # Prioritize MP4 format, then higher bitrate
+                    should_replace = False
+                    
+                    if ext == 'mp4' and current_ext != 'mp4':
+                        # New format is MP4 and current is not - prefer MP4
+                        should_replace = True
+                    elif ext == current_ext:
+                        # Same format, choose higher bitrate
+                        should_replace = new_tbr > current_tbr
+                    elif current_ext != 'mp4' and new_tbr > current_tbr:
+                        # Neither is MP4, choose higher bitrate
+                        should_replace = True
+                    
+                    if should_replace:
+                        quality_groups[key] = fmt
         
         # Convert to list and add size estimates
         for quality, fmt in quality_groups.items():
@@ -305,8 +328,20 @@ class VideoDownloader:
                     task_id
                 )
                 
-                if not result or not os.path.exists(result['file_path']):
-                    raise ValueError("Download failed - file not created")
+                if not result or not result.get('file_path') or not os.path.exists(result['file_path']):
+                    # Try to find downloaded file in temp directory
+                    downloaded_files = []
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            if not file.endswith(('.info.json', '.image', '.description', '.annotations.xml')):
+                                downloaded_files.append(os.path.join(root, file))
+                    
+                    if downloaded_files:
+                        # Use the first valid file found
+                        result = {'file_path': downloaded_files[0]}
+                        logger.info(f"📁 Found downloaded file: {downloaded_files[0]}")
+                    else:
+                        raise ValueError("Download failed - no file created")
                 
                 # Get final file info
                 file_size = os.path.getsize(result['file_path'])
@@ -357,8 +392,17 @@ class VideoDownloader:
                 }],
             })
         else:
-            # Video download
-            base_opts['format'] = format_id
+            # Video download with format preference
+            # If format_id contains specific format, use it directly
+            # Otherwise, try to get MP4 version if possible
+            if '+' in format_id or format_id.endswith('[ext=mp4]'):
+                base_opts['format'] = format_id
+            else:
+                # Try to get MP4 version first, fallback to original format
+                base_opts['format'] = f"{format_id}[ext=mp4]/{format_id}/best[ext=mp4]/best"
+            
+            # Ensure we get video with audio when possible
+            base_opts['merge_output_format'] = 'mp4'
         
         return base_opts
     

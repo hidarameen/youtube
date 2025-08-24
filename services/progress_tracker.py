@@ -43,8 +43,12 @@ class ProgressTracker:
         self.upload_progress: Dict[str, ProgressInfo] = {}
         
         # Performance optimization
-        self.update_interval = 0.5  # Update every 500ms
+        self.update_interval = 0.3  # Update every 300ms for smoother animation
         self.last_updates: Dict[str, float] = {}
+        
+        # Animation tracking
+        self.animation_frames: Dict[str, int] = {}  # Track animation frame for each task
+        self.start_times: Dict[str, float] = {}     # Track start time for each task
         
         # Cleanup settings
         self.max_progress_age = 3600  # Keep progress for 1 hour
@@ -296,7 +300,7 @@ class ProgressTracker:
             'speed_str': format_speed(progress.speed),
             'eta_str': format_duration(progress.eta),
             'elapsed_str': format_duration(elapsed_time),
-            'progress_bar': self._create_progress_bar(progress.percentage)
+            'progress_bar': self._create_progress_bar(progress.percentage, progress.task_id)
         }
     
     def _format_progress_dict(self, progress_data: Dict) -> Dict[str, Any]:
@@ -330,10 +334,33 @@ class ProgressTracker:
             'progress_bar': self._create_progress_bar(percentage)
         }
     
-    def _create_progress_bar(self, percentage: float, length: int = 20) -> str:
-        """Create a visual progress bar"""
+    def _create_progress_bar(self, percentage: float, task_id: str = "", length: int = 20) -> str:
+        """Create an animated visual progress bar"""
+        from static.icons import Icons
+        
         filled = int(percentage / 100 * length)
-        bar = '█' * filled + '░' * (length - filled)
+        
+        # Get current animation frame
+        if task_id:
+            if task_id not in self.animation_frames:
+                self.animation_frames[task_id] = 0
+            frame_index = self.animation_frames[task_id] % len(Icons.PROGRESS_FRAMES)
+            self.animation_frames[task_id] += 1
+            progress_char = Icons.PROGRESS_FRAMES[frame_index]
+        else:
+            progress_char = "█"
+        
+        # Create animated bar
+        if percentage < 100:
+            # Show animation at the progress edge
+            if filled > 0:
+                bar = '█' * (filled - 1) + progress_char + '░' * (length - filled)
+            else:
+                bar = progress_char + '░' * (length - 1)
+        else:
+            # Completed - show full bar with success animation
+            bar = '█' * length
+            
         return f"[{bar}] {percentage:.1f}%"
     
     async def get_user_progress(self, user_id: int) -> Dict[str, List[Dict[str, Any]]]:

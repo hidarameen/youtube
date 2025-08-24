@@ -31,7 +31,7 @@ class FileManager:
         
         # File operation semaphores
         self.upload_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_UPLOADS)
-        self.process_semaphore = asyncio.Semaphore(5)  # File processing operations
+        self.process_semaphore = asyncio.Semaphore(8)  # Increased processing operations
         
         # File tracking
         self.active_uploads: Dict[str, Any] = {}
@@ -254,14 +254,23 @@ class FileManager:
     def _create_upload_progress_callback(self, task_id: str, total_size: int):
         """Create progress callback for upload tracking"""
         def progress_callback(current: int, total: int):
-            # Update progress tracker asynchronously
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(
-                    self.progress_tracker.update_upload_progress(
-                        task_id, current, total, "Uploading..."
+            # Update progress tracker safely from thread
+            try:
+                # Try to get the running loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Schedule the coroutine to run in the event loop
+                    asyncio.run_coroutine_threadsafe(
+                        self.progress_tracker.update_upload_progress(
+                            task_id, current, total, "Uploading..."
+                        ), loop
                     )
-                )
+                except RuntimeError:
+                    # No running loop, skip progress update
+                    pass
+            except Exception as e:
+                # Silently handle progress update errors
+                logger.debug(f"Upload progress update error: {e}")
             
             # Update active uploads
             if task_id in self.active_uploads:

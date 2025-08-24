@@ -36,8 +36,8 @@ class Settings:
     
     # Performance Settings
     MAX_CONCURRENT_DOWNLOADS: int = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "5"))
-    MAX_CONCURRENT_UPLOADS: int = int(os.getenv("MAX_CONCURRENT_UPLOADS", "3"))
-    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "262144"))  # 256KB
+    MAX_CONCURRENT_UPLOADS: int = int(os.getenv("MAX_CONCURRENT_UPLOADS", "5"))  # Increased for faster throughput
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "524288"))  # 512KB (max allowed by Telethon)
     MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", "2147483648"))  # 2GB
     
     # File Management
@@ -47,9 +47,10 @@ class Settings:
     
     # Speed Optimization
     USE_FAST_TELETHON: bool = os.getenv("USE_FAST_TELETHON", "true").lower() == "true"
-    BANDWIDTH_LIMIT: int = int(os.getenv("BANDWIDTH_LIMIT", "25000000"))  # 25MB/s
-    CONNECTION_RETRIES: int = int(os.getenv("CONNECTION_RETRIES", "5"))
-    REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", "300"))  # 5 minutes
+    BANDWIDTH_LIMIT: int = int(os.getenv("BANDWIDTH_LIMIT", "50000000"))  # 50MB/s increased limit
+    CONNECTION_RETRIES: int = int(os.getenv("CONNECTION_RETRIES", "3"))  # Reduced for faster failures
+    REQUEST_TIMEOUT: int = int(os.getenv("REQUEST_TIMEOUT", "900"))  # 15 minutes optimized
+    UPLOAD_WORKERS: int = int(os.getenv("UPLOAD_WORKERS", "8"))  # Multiple workers for parallel uploads
     
     # Feature Flags
     ENABLE_ANALYTICS: bool = os.getenv("ENABLE_ANALYTICS", "true").lower() == "true"
@@ -117,7 +118,7 @@ class Settings:
             'socket_timeout': 30,
             'prefer_free_formats': True,
             'merge_output_format': 'mp4',
-            'concurrent_fragments': 5,
+            'concurrent_fragments': 8,  # Increased for faster downloads
             'http_chunk_size': self.CHUNK_SIZE,
             'outtmpl': f"{self.TEMP_DIR}/%(title)s.%(ext)s",
             'restrictfilenames': True,
