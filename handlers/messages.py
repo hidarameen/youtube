@@ -76,15 +76,15 @@ class MessageHandlers:
                 from utils.progress_animations import InteractiveMessages
                 success_progress = progress_animator.get_animated_progress_bar(100, f"extract_{user.id}", "pulse")
                 success_text = f"""
-{Icons.SUCCESS} <b>تم استخراج معلومات الفيديو بنجاح!</b>
+{Icons.SUCCESS} <b>Video information extracted successfully!</b>
 
-{Icons.VIDEO} <b>العنوان:</b> {video_info.get('title', 'فيديو بدون عنوان')[:50]}...
-{Icons.TIMER} <b>المدة:</b> {video_info.get('duration_string', 'غير محدد')}
-{Icons.PLATFORMS} <b>المنصة:</b> {platform.title()}
+{Icons.VIDEO} <b>Title:</b> {video_info.get('title', 'Untitled Video')[:50]}...
+{Icons.TIMER} <b>Duration:</b> {video_info.get('duration_string', 'Unknown')}
+{Icons.PLATFORMS} <b>Platform:</b> {platform.title()}
 
 {success_progress}
 
-{Icons.SPARKLES} <i>اختر الجودة والصيغة المفضلة لديك...</i>
+{Icons.SPARKLES} <i>Choose your preferred quality and format...</i>
                 """
                 
                 await processing_message.edit_text(success_text, parse_mode=ParseMode.HTML)
@@ -99,16 +99,19 @@ class MessageHandlers:
                 error_progress = progress_animator.get_animated_progress_bar(0, f"error_{user.id}", "default")
                 error_text = InteractiveMessages.get_error_message(
                     str(e), 
-                    f"\n{Icons.TIP} <b>اقتراحات:</b>\n• تأكد من أن الرابط صحيح\n• جرب رابطاً من منصة أخرى\n• أعد المحاولة بعد قليل"
+                    f"\n{Icons.TIP} <b>Suggestions:</b>\n• Make sure the link is correct\n• Try a link from another platform\n• Retry after a moment"
                 )
                 
-                await processing_message.edit_text(error_text, parse_mode=ParseMode.HTML)
+                # Create shorter callback data to avoid Telegram limits
+                url_hash = hashlib.md5(text.encode()).hexdigest()[:8]
                 
-                # Add retry button
                 retry_keyboard = [[
-                    InlineKeyboardButton(f"{Icons.REFRESH} إعادة المحاولة", callback_data=f"retry_extraction:{text[:100]}")
+                    InlineKeyboardButton(f"{Icons.REFRESH} Retry", callback_data=f"retry_{url_hash}")
                 ]]
-                await processing_message.edit_reply_markup(
+                
+                await processing_message.edit_text(
+                    error_text, 
+                    parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(retry_keyboard)
                 )
             

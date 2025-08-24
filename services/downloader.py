@@ -12,6 +12,9 @@ from typing import Dict, Any, Optional, List, Callable
 import yt_dlp
 from concurrent.futures import ThreadPoolExecutor
 import json
+import http.cookiejar
+import aiohttp
+import re
 
 from config.settings import settings
 from services.file_manager import FileManager
@@ -47,6 +50,11 @@ class VideoDownloader:
         
         # Active downloads tracking
         self.active_downloads: Dict[str, Any] = {}
+        
+        # Instagram authentication and cookies
+        self.instagram_cookies: Dict[str, Any] = {}
+        self.instagram_session_file = "instagram_session.json"
+        self.load_instagram_session()
         
     async def get_video_info(self, url: str, user_id: int) -> Dict[str, Any]:
         """
@@ -241,7 +249,7 @@ class VideoDownloader:
             return None
     
     async def _try_instagram_api(self, url: str) -> Optional[Dict]:
-        """Try Instagram Graph API for better access"""
+        """Try alternative Instagram API methods for better access"""
         try:
             import re
             import aiohttp
@@ -257,65 +265,189 @@ class VideoDownloader:
             video_id = video_id_match.group(1)
             logger.info(f"📝 Extracted video ID: {video_id}")
             
-            # Try different Instagram API endpoints
-            # First try the media endpoint
-            api_url = f"https://graph.instagram.com/v18.0/{video_id}"
-            params = {
-                'fields': 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp,username',
-                'access_token': settings.INSTAGRAM_ACCESS_TOKEN
-            }
+            # Try authenticated method first (if cookies available)
+            if self.instagram_cookies:
+                authenticated_result = await self._try_instagram_authenticated(url)
+                if authenticated_result:
+                    return authenticated_result
             
-            # If that fails, try the business discovery endpoint
-            fallback_url = f"https://graph.instagram.com/v18.0/me"
-            fallback_params = {
-                'fields': f'business_discovery.username(instagram){{media.limit(1){{id,media_type,media_url,thumbnail_url,caption}}}}',
-                'access_token': settings.INSTAGRAM_ACCESS_TOKEN
-            }
+            # Try Instagram Basic Display API (for public content)
+            basic_api_result = await self._try_instagram_basic_display(video_id, url)
+            if basic_api_result:
+                return basic_api_result
             
-            logger.info(f"🌐 Making API request to: {api_url}")
+            # Try alternative scraping method with headers
+            scraping_result = await self._try_instagram_scraping(url)
+            if scraping_result:
+                return scraping_result
             
-            timeout = aiohttp.ClientTimeout(total=15)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(api_url, params=params) as response:
-                    logger.info(f"📡 API Response status: {response.status}")
-                    
-                    if response.status == 200:
-                        data = await response.json()
-                        logger.info(f"📦 API Response data keys: {list(data.keys())}")
-                        
-                        # Check if we have valid media data
-                        if not data.get('media_url'):
-                            logger.warning("❌ No media_url in API response")
-                            return None
-                        
-                        # Convert API response to yt-dlp format
-                        processed_info = {
-                            'id': data.get('id', video_id),
-                            'title': data.get('caption', 'Instagram Video')[:100] or 'Instagram Video',
-                            'uploader': 'Instagram User',
-                            'url': data.get('media_url', ''),
-                            'thumbnail': data.get('thumbnail_url', ''),
-                            'duration': 0,  # API doesn't provide duration
-                            'view_count': 0,
-                            'platform': 'instagram',
-                            'webpage_url': url,
-                            'formats': [{
-                                'url': data.get('media_url', ''),
-                                'format_id': 'api',
-                                'ext': 'mp4',
-                                'quality': 'unknown'
-                            }] if data.get('media_url') else []
-                        }
-                        
-                        logger.info(f"✅ Successfully processed Instagram API data: {processed_info['title']}")
-                        return processed_info
-                    else:
-                        error_text = await response.text()
-                        logger.warning(f"❌ API request failed with status {response.status}: {error_text}")
-                        return None
+            logger.warning("❌ All Instagram API methods failed")
+            return None
             
         except Exception as e:
             logger.warning(f"❌ Instagram API extraction failed: {e}")
+        
+        return None
+    
+    async def _try_instagram_basic_display(self, video_id: str, url: str) -> Optional[Dict]:
+        """Try Instagram Basic Display API"""
+        try:
+            import aiohttp
+            
+            # Try to get media info using Instagram's embed endpoint
+            embed_url = f"https://www.instagram.com/p/{video_id}/embed/"
+            
+            timeout = aiohttp.ClientTimeout(total=10)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            }
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(embed_url, headers=headers) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        
+                        # Try to extract video URL from embed page
+                        import json
+                        
+                        # Look for JSON data in the embed page
+                        start_pattern = '"shortcode_media":'
+                        start_index = content.find(start_pattern)
+                        if start_index != -1:
+                            # Extract JSON data
+                            start_index += len(start_pattern)
+                            brace_count = 0
+                            end_index = start_index
+                            
+                            for i, char in enumerate(content[start_index:], start_index):
+                                if char == '{':
+                                    brace_count += 1
+                                elif char == '}':
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        end_index = i + 1
+                                        break
+                            
+                            if end_index > start_index:
+                                try:
+                                    json_str = content[start_index:end_index]
+                                    data = json.loads(json_str)
+                                    
+                                    # Extract video URL
+                                    video_url = data.get('video_url')
+                                    if video_url:
+                                        processed_info = {
+                                            'id': video_id,
+                                            'title': data.get('edge_media_to_caption', {}).get('edges', [{}])[0].get('node', {}).get('text', 'Instagram Video')[:100] or 'Instagram Video',
+                                            'uploader': data.get('owner', {}).get('username', 'Instagram User'),
+                                            'url': video_url,
+                                            'thumbnail': data.get('display_url', ''),
+                                            'duration': data.get('video_duration', 0),
+                                            'view_count': data.get('video_view_count', 0),
+                                            'platform': 'instagram',
+                                            'webpage_url': url,
+                                            'formats': [{
+                                                'url': video_url,
+                                                'format_id': 'basic_display',
+                                                'ext': 'mp4',
+                                                'quality': 'unknown'
+                                            }]
+                                        }
+                                        
+                                        logger.info(f"✅ Instagram Basic Display extraction successful!")
+                                        return processed_info
+                                        
+                                except json.JSONDecodeError as e:
+                                    logger.debug(f"JSON parsing error: {e}")
+                        
+        except Exception as e:
+            logger.debug(f"Basic Display API failed: {e}")
+        
+        return None
+    
+    async def _try_instagram_scraping(self, url: str) -> Optional[Dict]:
+        """Try alternative Instagram scraping method"""
+        try:
+            import aiohttp
+            import re
+            
+            logger.info("🔄 Trying Instagram scraping method...")
+            
+            timeout = aiohttp.ClientTimeout(total=15)
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Mobile/15E148 Safari/604.1',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        
+                        # Extract video ID from URL
+                        video_id_match = re.search(r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url)
+                        video_id = video_id_match.group(1) if video_id_match else 'unknown'
+                        
+                        # Try to find video URL in the page content
+                        video_patterns = [
+                            r'"video_url":"([^"]+)"',
+                            r'"src":"([^"]+\.mp4[^"]*)"',
+                            r'videoUrl":"([^"]+)"',
+                        ]
+                        
+                        video_url = None
+                        for pattern in video_patterns:
+                            match = re.search(pattern, content)
+                            if match:
+                                video_url = match.group(1).replace('\\u0026', '&').replace('\\/', '/')
+                                break
+                        
+                        if video_url:
+                            # Try to extract title/caption
+                            title_patterns = [
+                                r'"caption":"([^"]+)"',
+                                r'"text":"([^"]+)"',
+                                r'<title>([^<]+)</title>',
+                            ]
+                            
+                            title = 'Instagram Video'
+                            for pattern in title_patterns:
+                                match = re.search(pattern, content)
+                                if match:
+                                    title = match.group(1)[:100]
+                                    break
+                            
+                            processed_info = {
+                                'id': video_id,
+                                'title': title,
+                                'uploader': 'Instagram User',
+                                'url': video_url,
+                                'thumbnail': '',
+                                'duration': 0,
+                                'view_count': 0,
+                                'platform': 'instagram',
+                                'webpage_url': url,
+                                'formats': [{
+                                    'url': video_url,
+                                    'format_id': 'scraped',
+                                    'ext': 'mp4',
+                                    'quality': 'unknown'
+                                }]
+                            }
+                            
+                            logger.info(f"✅ Instagram scraping extraction successful!")
+                            return processed_info
+                        
+        except Exception as e:
+            logger.debug(f"Scraping method failed: {e}")
         
         return None
     
@@ -900,3 +1032,272 @@ class VideoDownloader:
             return total_size
         except Exception:
             return 0
+    
+    def load_instagram_session(self):
+        """Load Instagram session cookies from file"""
+        try:
+            if os.path.exists(self.instagram_session_file):
+                with open(self.instagram_session_file, 'r') as f:
+                    session_data = json.load(f)
+                    self.instagram_cookies = session_data.get('cookies', {})
+                    logger.info("✅ Instagram session loaded successfully")
+            else:
+                logger.info("ℹ️ No Instagram session file found, will create new one")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load Instagram session: {e}")
+    
+    def save_instagram_session(self):
+        """Save Instagram session cookies to file"""
+        try:
+            session_data = {
+                'cookies': self.instagram_cookies,
+                'last_updated': time.time()
+            }
+            with open(self.instagram_session_file, 'w') as f:
+                json.dump(session_data, f, indent=2)
+            logger.info("✅ Instagram session saved successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to save Instagram session: {e}")
+    
+    async def login_instagram_with_cookies(self, cookies_text: str) -> bool:
+        """Login to Instagram using provided cookies"""
+        try:
+            logger.info("🔐 Attempting Instagram login with provided cookies...")
+            
+            # Parse cookies from different formats
+            parsed_cookies = self._parse_cookies(cookies_text)
+            if not parsed_cookies:
+                logger.error("❌ Failed to parse cookies")
+                return False
+            
+            # Test cookies by making a request
+            success = await self._test_instagram_cookies(parsed_cookies)
+            if success:
+                self.instagram_cookies.update(parsed_cookies)
+                self.save_instagram_session()
+                logger.info("✅ Instagram login successful!")
+                return True
+            else:
+                logger.error("❌ Invalid or expired cookies")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Instagram login failed: {e}")
+            return False
+    
+    def _parse_cookies(self, cookies_text: str) -> Dict[str, str]:
+        """Parse cookies from various formats (Netscape, JSON, raw headers)"""
+        cookies = {}
+        
+        try:
+            # Try parsing as JSON first
+            if cookies_text.strip().startswith('{'):
+                json_cookies = json.loads(cookies_text)
+                if isinstance(json_cookies, dict):
+                    return json_cookies
+                elif isinstance(json_cookies, list):
+                    for cookie in json_cookies:
+                        if 'name' in cookie and 'value' in cookie:
+                            cookies[cookie['name']] = cookie['value']
+                    return cookies
+            
+            # Try parsing as Netscape format
+            if 'instagram.com' in cookies_text.lower():
+                lines = cookies_text.strip().split('\n')
+                for line in lines:
+                    if line.startswith('#') or not line.strip():
+                        continue
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        name, value = parts[5], parts[6]
+                        cookies[name] = value
+                return cookies
+            
+            # Try parsing as raw cookie header format
+            if '=' in cookies_text:
+                cookie_pairs = cookies_text.split(';')
+                for pair in cookie_pairs:
+                    if '=' in pair:
+                        name, value = pair.split('=', 1)
+                        cookies[name.strip()] = value.strip()
+                return cookies
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to parse cookies: {e}")
+        
+        return cookies
+    
+    async def _test_instagram_cookies(self, cookies: Dict[str, str]) -> bool:
+        """Test if Instagram cookies are valid"""
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+            }
+            
+            # Convert cookies to proper format
+            cookie_jar = aiohttp.CookieJar()
+            for name, value in cookies.items():
+                cookie_jar.update_cookies({name: value}, response_url='https://instagram.com')
+            
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(
+                cookie_jar=cookie_jar, 
+                headers=headers, 
+                timeout=timeout
+            ) as session:
+                # Test with Instagram's main page
+                async with session.get('https://www.instagram.com/') as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        # Check if we're logged in (look for specific indicators)
+                        if '"is_logged_in":true' in content or 'window._sharedData' in content:
+                            logger.info("✅ Instagram cookies are valid and user is logged in")
+                            return True
+                        else:
+                            logger.warning("⚠️ Cookies accepted but user may not be fully logged in")
+                            return True  # Still usable for some content
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to test Instagram cookies: {e}")
+            return False
+    
+    async def _try_instagram_authenticated(self, url: str) -> Optional[Dict]:
+        """Try Instagram with authenticated session"""
+        try:
+            if not self.instagram_cookies:
+                logger.info("ℹ️ No Instagram cookies available")
+                return None
+            
+            logger.info("🔐 Attempting Instagram extraction with authenticated session...")
+            
+            # Extract video ID
+            video_id_match = re.search(r'/(?:p|reel|tv)/([A-Za-z0-9_-]+)', url)
+            if not video_id_match:
+                return None
+            
+            video_id = video_id_match.group(1)
+            
+            # Advanced headers for authenticated requests
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': self.instagram_cookies.get('csrftoken', ''),
+                'X-Instagram-AJAX': '1',
+                'X-IG-App-ID': '936619743392459',
+                'X-IG-WWW-Claim': '0',
+                'Origin': 'https://www.instagram.com',
+                'Referer': url,
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+            }
+            
+            # Create cookie jar
+            cookie_jar = aiohttp.CookieJar()
+            for name, value in self.instagram_cookies.items():
+                cookie_jar.update_cookies({name: value}, response_url='https://instagram.com')
+            
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(
+                cookie_jar=cookie_jar, 
+                headers=headers, 
+                timeout=timeout
+            ) as session:
+                
+                # Try GraphQL API endpoint
+                graphql_url = f"https://www.instagram.com/api/v1/media/{video_id}/info/"
+                async with session.get(graphql_url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if 'items' in data and len(data['items']) > 0:
+                            item = data['items'][0]
+                            
+                            # Extract video URL
+                            video_url = None
+                            if 'video_versions' in item and len(item['video_versions']) > 0:
+                                video_url = item['video_versions'][0]['url']
+                            
+                            if video_url:
+                                processed_info = {
+                                    'id': video_id,
+                                    'title': item.get('caption', {}).get('text', 'Instagram Video')[:100] or 'Instagram Video',
+                                    'uploader': item.get('user', {}).get('username', 'Instagram User'),
+                                    'url': video_url,
+                                    'thumbnail': item.get('image_versions2', {}).get('candidates', [{}])[0].get('url', ''),
+                                    'duration': item.get('video_duration', 0),
+                                    'view_count': item.get('view_count', 0),
+                                    'platform': 'instagram',
+                                    'webpage_url': url,
+                                    'formats': [{
+                                        'url': video_url,
+                                        'format_id': 'authenticated',
+                                        'ext': 'mp4',
+                                        'quality': 'high'
+                                    }]
+                                }
+                                
+                                logger.info("✅ Instagram authenticated extraction successful!")
+                                return processed_info
+                
+                # Fallback: Try web interface with authentication
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        
+                        # Extract from window._sharedData
+                        pattern = r'window\._sharedData\s*=\s*({.+?});'
+                        match = re.search(pattern, content)
+                        if match:
+                            try:
+                                shared_data = json.loads(match.group(1))
+                                entry_data = shared_data.get('entry_data', {})
+                                
+                                # Check different possible locations
+                                for page_type in ['PostPage', 'ProfilePage']:
+                                    if page_type in entry_data:
+                                        for post in entry_data[page_type][0].get('graphql', {}).get('shortcode_media', []):
+                                            if post.get('video_url'):
+                                                processed_info = {
+                                                    'id': video_id,
+                                                    'title': post.get('edge_media_to_caption', {}).get('edges', [{}])[0].get('node', {}).get('text', 'Instagram Video')[:100] or 'Instagram Video',
+                                                    'uploader': post.get('owner', {}).get('username', 'Instagram User'),
+                                                    'url': post['video_url'],
+                                                    'thumbnail': post.get('display_url', ''),
+                                                    'duration': post.get('video_duration', 0),
+                                                    'view_count': post.get('video_view_count', 0),
+                                                    'platform': 'instagram',
+                                                    'webpage_url': url,
+                                                    'formats': [{
+                                                        'url': post['video_url'],
+                                                        'format_id': 'web_authenticated',
+                                                        'ext': 'mp4',
+                                                        'quality': 'high'
+                                                    }]
+                                                }
+                                                
+                                                logger.info("✅ Instagram web authenticated extraction successful!")
+                                                return processed_info
+                                                
+                            except json.JSONDecodeError:
+                                pass
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Instagram authenticated extraction failed: {e}")
+        
+        return None

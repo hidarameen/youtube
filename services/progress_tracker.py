@@ -42,12 +42,20 @@ class ProgressTracker:
         self.download_progress: Dict[str, ProgressInfo] = {}
         self.upload_progress: Dict[str, ProgressInfo] = {}
         
-        # Performance optimization
-        self.update_interval = 0.3  # Update every 300ms for smoother animation
+        # Real-time performance optimization
+        self.update_interval = 0.1  # Update every 100ms for ultra-smooth real-time animation
         self.last_updates: Dict[str, float] = {}
         
-        # Animation tracking
+        # Real-time tracking data for precise calculations
+        self.speed_history: Dict[str, List[Tuple[float, float]]] = {}  # task_id -> [(timestamp, speed)]
+        self.progress_samples: Dict[str, List[Tuple[float, float, float]]] = {}  # task_id -> [(time, current, total)]
+        self.instant_speeds: Dict[str, float] = {}  # Real-time speed calculation
+        self.accurate_eta: Dict[str, float] = {}  # More accurate ETA calculation
+        
+        # Enhanced Animation tracking
         self.animation_frames: Dict[str, int] = {}  # Track animation frame for each task
+        self.animation_styles: Dict[str, str] = {}  # Track animation style for each task
+        self.user_preferences: Dict[int, Dict] = {}  # Store user animation preferences
         self.start_times: Dict[str, float] = {}     # Track start time for each task
         
         # Cleanup settings
@@ -103,7 +111,7 @@ class ProgressTracker:
             # Calculate progress metrics
             percentage = (current_bytes / total_bytes * 100) if total_bytes > 0 else 0
             
-            # Calculate speed and ETA
+            # Real-time speed and ETA calculation with accuracy
             speed = 0
             eta = 0
             start_time = current_time
@@ -113,10 +121,14 @@ class ProgressTracker:
                 start_time = existing.start_time
                 elapsed_time = current_time - start_time
                 
-                if elapsed_time > 0:
-                    speed = current_bytes / elapsed_time
-                    if speed > 0 and total_bytes > current_bytes:
-                        eta = (total_bytes - current_bytes) / speed
+                # Calculate instant speed using samples
+                speed = self._calculate_realtime_speed(task_id, current_bytes, current_time)
+                
+                # Calculate more accurate ETA using recent speed trends
+                eta = self._calculate_accurate_eta(task_id, current_bytes, total_bytes, speed)
+                
+                # Store progress sample for better calculations
+                self._store_progress_sample(task_id, current_time, current_bytes, total_bytes)
             
             # Create progress info
             progress = ProgressInfo(
@@ -172,7 +184,7 @@ class ProgressTracker:
             # Calculate progress metrics
             percentage = (current_bytes / total_bytes * 100) if total_bytes > 0 else 0
             
-            # Calculate speed and ETA
+            # Real-time speed and ETA calculation for uploads
             speed = 0
             eta = 0
             start_time = current_time
@@ -182,10 +194,14 @@ class ProgressTracker:
                 start_time = existing.start_time
                 elapsed_time = current_time - start_time
                 
-                if elapsed_time > 0:
-                    speed = current_bytes / elapsed_time
-                    if speed > 0 and total_bytes > current_bytes:
-                        eta = (total_bytes - current_bytes) / speed
+                # Calculate instant upload speed using samples
+                speed = self._calculate_realtime_speed(task_id, current_bytes, current_time)
+                
+                # Calculate more accurate ETA using recent speed trends
+                eta = self._calculate_accurate_eta(task_id, current_bytes, total_bytes, speed)
+                
+                # Store progress sample for better calculations
+                self._store_progress_sample(task_id, current_time, current_bytes, total_bytes)
             
             # Create progress info
             progress = ProgressInfo(
@@ -520,5 +536,177 @@ class ProgressTracker:
                 await self.cleanup_task
             except asyncio.CancelledError:
                 pass
+    
+    def _calculate_realtime_speed(self, task_id: str, current_bytes: int, current_time: float) -> float:
+        """Calculate real-time speed using recent samples for accuracy"""
+        try:
+            # Get or create speed history
+            if task_id not in self.speed_history:
+                self.speed_history[task_id] = []
+            
+            speed_history = self.speed_history[task_id]
+            
+            # Add current sample
+            speed_history.append((current_time, current_bytes))
+            
+            # Keep only recent samples (last 10 seconds)
+            cutoff_time = current_time - 10
+            speed_history[:] = [(t, b) for t, b in speed_history if t > cutoff_time]
+            
+            # Calculate speed based on recent samples
+            if len(speed_history) < 2:
+                return 0
+            
+            # Use linear regression for more accurate speed
+            total_time_diff = 0
+            total_bytes_diff = 0
+            sample_count = min(len(speed_history), 5)  # Use last 5 samples
+            
+            for i in range(1, sample_count):
+                time_diff = speed_history[i][0] - speed_history[i-1][0]
+                bytes_diff = speed_history[i][1] - speed_history[i-1][1]
+                
+                if time_diff > 0:
+                    total_time_diff += time_diff
+                    total_bytes_diff += bytes_diff
+            
+            if total_time_diff > 0:
+                instant_speed = total_bytes_diff / total_time_diff
+                self.instant_speeds[task_id] = instant_speed
+                return max(0, instant_speed)  # Ensure positive speed
+            
+            return self.instant_speeds.get(task_id, 0)
+            
+        except Exception as e:
+            logger.warning(f"Speed calculation error for {task_id}: {e}")
+            return 0
+    
+    def _calculate_accurate_eta(self, task_id: str, current_bytes: int, total_bytes: int, current_speed: float) -> float:
+        """Calculate more accurate ETA using speed trends and adaptive algorithms"""
+        try:
+            if current_speed <= 0 or current_bytes >= total_bytes:
+                return 0
+            
+            remaining_bytes = total_bytes - current_bytes
+            
+            # Simple ETA based on current speed
+            basic_eta = remaining_bytes / current_speed
+            
+            # Get speed history for trend analysis
+            if task_id in self.speed_history and len(self.speed_history[task_id]) > 3:
+                speeds = []
+                recent_samples = self.speed_history[task_id][-5:]  # Last 5 samples
+                
+                for i in range(1, len(recent_samples)):
+                    time_diff = recent_samples[i][0] - recent_samples[i-1][0]
+                    bytes_diff = recent_samples[i][1] - recent_samples[i-1][1]
+                    if time_diff > 0:
+                        speeds.append(bytes_diff / time_diff)
+                
+                if speeds:
+                    # Calculate trend (is speed increasing/decreasing?)
+                    if len(speeds) > 1:
+                        trend = (speeds[-1] - speeds[0]) / len(speeds)
+                        
+                        # Adjust ETA based on trend
+                        if trend > 0:  # Speed increasing
+                            adjusted_speed = current_speed + (trend * 5)  # Project 5 seconds ahead
+                            basic_eta = remaining_bytes / max(adjusted_speed, current_speed * 0.5)
+                        elif trend < 0:  # Speed decreasing
+                            adjusted_speed = current_speed + (trend * 5)
+                            basic_eta = remaining_bytes / max(adjusted_speed, current_speed * 0.3)
+            
+            self.accurate_eta[task_id] = basic_eta
+            return basic_eta
+            
+        except Exception as e:
+            logger.warning(f"ETA calculation error for {task_id}: {e}")
+            return 0
+    
+    def _store_progress_sample(self, task_id: str, timestamp: float, current_bytes: int, total_bytes: int):
+        """Store progress sample for trend analysis"""
+        try:
+            if task_id not in self.progress_samples:
+                self.progress_samples[task_id] = []
+            
+            samples = self.progress_samples[task_id]
+            samples.append((timestamp, current_bytes, total_bytes))
+            
+            # Keep only recent samples (last 30 seconds)
+            cutoff_time = timestamp - 30
+            samples[:] = [(t, c, tot) for t, c, tot in samples if t > cutoff_time]
+            
+        except Exception as e:
+            logger.warning(f"Failed to store progress sample for {task_id}: {e}")
+    
+    def get_realtime_stats(self, task_id: str) -> Dict[str, Any]:
+        """Get real-time statistics for a task"""
+        try:
+            stats = {
+                'instant_speed': self.instant_speeds.get(task_id, 0),
+                'instant_speed_str': format_speed(self.instant_speeds.get(task_id, 0)),
+                'accurate_eta': self.accurate_eta.get(task_id, 0),
+                'accurate_eta_str': format_duration(self.accurate_eta.get(task_id, 0)),
+                'sample_count': len(self.speed_history.get(task_id, [])),
+                'trend_available': len(self.speed_history.get(task_id, [])) > 3
+            }
+            
+            # Calculate speed trend if available
+            if task_id in self.speed_history and len(self.speed_history[task_id]) > 3:
+                recent_speeds = []
+                samples = self.speed_history[task_id][-5:]
+                
+                for i in range(1, len(samples)):
+                    time_diff = samples[i][0] - samples[i-1][0]
+                    bytes_diff = samples[i][1] - samples[i-1][1]
+                    if time_diff > 0:
+                        recent_speeds.append(bytes_diff / time_diff)
+                
+                if len(recent_speeds) > 1:
+                    trend = (recent_speeds[-1] - recent_speeds[0]) / len(recent_speeds)
+                    stats['speed_trend'] = 'increasing' if trend > 0 else 'decreasing' if trend < 0 else 'stable'
+                    stats['speed_trend_value'] = trend
+                else:
+                    stats['speed_trend'] = 'stable'
+                    stats['speed_trend_value'] = 0
+            else:
+                stats['speed_trend'] = 'unknown'
+                stats['speed_trend_value'] = 0
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Failed to get real-time stats for {task_id}: {e}")
+            return {}
+    
+    async def cleanup_task_data(self, task_id: str):
+        """Clean up all tracking data for a completed/cancelled task"""
+        try:
+            # Clean up speed history
+            if task_id in self.speed_history:
+                del self.speed_history[task_id]
+            
+            # Clean up progress samples
+            if task_id in self.progress_samples:
+                del self.progress_samples[task_id]
+            
+            # Clean up instant data
+            if task_id in self.instant_speeds:
+                del self.instant_speeds[task_id]
+            
+            if task_id in self.accurate_eta:
+                del self.accurate_eta[task_id]
+            
+            # Clean up animation data
+            if task_id in self.animation_frames:
+                del self.animation_frames[task_id]
+            
+            if task_id in self.animation_styles:
+                del self.animation_styles[task_id]
+            
+            logger.debug(f"🗑️ Cleaned up tracking data for task: {task_id}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to cleanup task data for {task_id}: {e}")
         
         logger.info("🛑 Progress tracker stopped")

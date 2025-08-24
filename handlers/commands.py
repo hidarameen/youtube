@@ -421,7 +421,8 @@ Current: {user_settings.get('default_format', 'MP4')}
                     InlineKeyboardButton(f"{Icons.ADVANCED} Advanced", callback_data="setting_advanced")
                 ],
                 [
-                    InlineKeyboardButton(f"{Icons.RESET} Reset to Defaults", callback_data="reset_settings"),
+                    InlineKeyboardButton(f"🔐 Instagram Login", callback_data="instagram_login"),
+                    InlineKeyboardButton(f"{Icons.RESET} Reset Settings", callback_data="reset_settings")
                 ],
                 [
                     InlineKeyboardButton(f"{Icons.BACK} Back", callback_data="start")

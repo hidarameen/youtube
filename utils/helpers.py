@@ -24,21 +24,28 @@ def generate_task_id() -> str:
     random_part = str(uuid.uuid4())[:8]
     return f"task_{timestamp}_{random_part}"
 
-def format_file_size(size_bytes: int) -> str:
-    """Format file size in human readable format"""
+def format_file_size(size_bytes: int, detailed: bool = False) -> str:
+    """Format file size in human readable format with optional details"""
     if size_bytes == 0:
         return "0 B"
     
     size_names = ["B", "KB", "MB", "GB", "TB"]
+    original_size = size_bytes
     i = 0
     while size_bytes >= 1024.0 and i < len(size_names) - 1:
         size_bytes /= 1024.0
         i += 1
     
     if i == 0:
-        return f"{int(size_bytes)} {size_names[i]}"
+        formatted = f"{int(size_bytes)} {size_names[i]}"
     else:
-        return f"{size_bytes:.1f} {size_names[i]}"
+        formatted = f"{size_bytes:.1f} {size_names[i]}"
+    
+    if detailed and i > 0:
+        # Add exact bytes in parentheses for detailed view
+        formatted += f" ({original_size:,} bytes)"
+    
+    return formatted
 
 def calculate_upload_speed(current: int, total_size: int, start_time: float = None) -> float:
     """Calculate upload/download speed in bytes per second"""

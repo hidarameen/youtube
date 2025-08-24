@@ -42,40 +42,94 @@ class ProgressAnimator:
             return self._create_default_progress(percentage, frame)
     
     def _create_default_progress(self, percentage: float, frame: int) -> str:
-        """Default animated progress bar"""
-        length = 20
+        """Ultra-modern animated progress bar with smooth movement"""
+        length = 25
         filled = int(percentage / 100 * length)
         
-        # Animation character
-        spinner = Icons.PROGRESS_FRAMES[frame % len(Icons.PROGRESS_FRAMES)]
+        # Advanced animation characters with smooth movement
+        moving_chars = ['▰', '▱', '▲', '►', '●', '◆', '★', '⚡']
+        glow_chars = ['✨', '💫', '⭐', '🌟', '💎', '🔥', '⚡', '🚀']
+        
+        # Moving animation character
+        moving_char = moving_chars[frame % len(moving_chars)]
+        glow_char = glow_chars[frame % len(glow_chars)]
         
         if percentage >= 100:
-            success_icon = Icons.SUCCESS_FRAMES[frame % len(Icons.SUCCESS_FRAMES)]
-            return f"[{'█' * length}] {success_icon} 100%"
+            # Celebration animation for completion
+            celebration = ['🎉', '🎊', '✨', '🏆', '🎯', '💯'][frame % 6]
+            full_bar = ''.join(['█'] * length)
+            return f"╭{'─' * (length + 2)}╮\n│ {full_bar} │ {celebration} 100%\n╰{'─' * (length + 2)}╯"
+        
         elif filled > 0:
-            bar = '█' * (filled - 1) + spinner + '░' * (length - filled)
-        else:
-            bar = spinner + '░' * (length - 1)
+            # Create smooth animated progress with glow effect
+            if filled >= length:
+                filled = length - 1
             
-        return f"[{bar}] {percentage:.1f}%"
+            # Add glow effect around the moving character
+            bar_parts = []
+            for i in range(length):
+                if i < filled - 1:
+                    bar_parts.append('█')
+                elif i == filled - 1:
+                    # Moving character with glow
+                    bar_parts.append(moving_char)
+                elif i == filled and frame % 3 == 0:
+                    # Occasional glow ahead
+                    bar_parts.append(glow_char)
+                else:
+                    bar_parts.append('░')
+            
+            bar = ''.join(bar_parts)
+        else:
+            # Starting animation
+            bar = moving_char + '░' * (length - 1)
+        
+        # Create beautiful bordered progress bar
+        progress_text = f"╭{'─' * (length + 2)}╮\n│ {bar} │ {glow_char} {percentage:.1f}%\n╰{'─' * (length + 2)}╯"
+        
+        return progress_text
     
     def _create_rainbow_progress(self, percentage: float, frame: int) -> str:
-        """Rainbow colored progress bar"""
-        length = 20
+        """Ultra-vibrant rainbow progress bar with flowing colors"""
+        length = 25
         filled = int(percentage / 100 * length)
         
-        if percentage >= 100:
-            rainbow_bar = ''.join(Icons.RAINBOW_PROGRESS[i % len(Icons.RAINBOW_PROGRESS)] for i in range(6))
-            return f"[{rainbow_bar}] {Icons.PARTY} 100%"
+        # Rainbow colors that flow and change
+        rainbow_sequence = ['🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '🟤', '⚫', '⚪']
+        rainbow_effects = ['🌈', '💫', '✨', '🎨', '🎪', '🎭', '🎊', '🎉']
         
-        rainbow_char = Icons.RAINBOW_PROGRESS[frame % len(Icons.RAINBOW_PROGRESS)]
+        if percentage >= 100:
+            # Epic rainbow completion
+            rainbow_bar = ''.join(rainbow_sequence[i % len(rainbow_sequence)] for i in range(8))
+            celebration = rainbow_effects[frame % len(rainbow_effects)]
+            return f"""
+╔═══════════════════════════════╗
+║ {rainbow_bar} ║ {celebration} 100%
+║    🌈 RAINBOW COMPLETE! 🌈    ║
+╚═══════════════════════════════╝"""
+        
+        # Create flowing rainbow effect
+        rainbow_char = rainbow_sequence[(frame + filled) % len(rainbow_sequence)]
+        effect_char = rainbow_effects[frame % len(rainbow_effects)]
         
         if filled > 0:
-            bar = '█' * (filled - 1) + rainbow_char + '░' * (length - filled)
+            # Create gradient rainbow bar
+            bar_parts = []
+            for i in range(length):
+                if i < filled - 1:
+                    bar_parts.append(rainbow_sequence[i % len(rainbow_sequence)])
+                elif i == filled - 1:
+                    bar_parts.append(rainbow_char)
+                else:
+                    bar_parts.append('░')
+            bar = ''.join(bar_parts)
         else:
             bar = rainbow_char + '░' * (length - 1)
-            
-        return f"[{bar}] {rainbow_char} {percentage:.1f}%"
+        
+        return f"""
+╔═══════════════════════════════╗
+║ {bar} ║ {effect_char} {percentage:.1f}%
+╚═══════════════════════════════╝"""
     
     def _create_fire_progress(self, percentage: float, frame: int) -> str:
         """Fire themed progress bar"""
@@ -114,20 +168,41 @@ class InteractiveMessages:
     
     @staticmethod
     def get_welcome_message(username: str = "") -> str:
-        """Animated welcome message"""
+        """Ultra-modern animated welcome message"""
         user_part = f" {username}" if username else ""
+        frame_time = int(time.time() * 2) % 4
+        
+        # Animated title with changing effects
+        title_effects = ['🚀', '⚡', '🔥', '💫']
+        current_effect = title_effects[frame_time]
+        
         return f"""
-{Icons.WELCOME} <b>أهلاً وسهلاً{user_part}!</b>
+╔══════════════════════════════════════╗
+║  {current_effect} <b>WELCOME{user_part}!</b> {current_effect}
+║                                      ║
+║   🎬 <b>ULTRA VIDEO DOWNLOADER BOT</b>   ║
+║         💎 <i>Premium Experience</i> 💎        ║
+╚══════════════════════════════════════╝
 
-{Icons.ROCKET} <b>مرحباً بك في Ultra Video Downloader Bot!</b>
+🌟 <b>SUPPORTED PLATFORMS:</b>
+┌─────────────────────────────────────┐
+│ 📺 YouTube        │ 📸 Instagram     │
+│ 🎵 TikTok         │ 📘 Facebook      │
+│ 🐦 Twitter/X      │ 🌐 1500+ Sites   │
+└─────────────────────────────────────┘
 
-{Icons.SPARKLES} <b>المميزات:</b>
-• {Icons.YOUTUBE} تحميل من YouTube، Instagram، TikTok
-• {Icons.FACEBOOK} دعم Facebook، Twitter، والمئات من المواقع
-• {Icons.LIGHTNING} سرعة فائقة وملفات تصل لـ 2GB
-• {Icons.MAGIC} جودة عالية وتحميل متزامن
+⚡ <b>ULTRA FEATURES:</b>
+▪️ Lightning-fast downloads up to 2GB
+▪️ 4K/HD quality with multiple formats
+▪️ Batch processing & queue management
+▪️ Real-time progress with animations
+▪️ Smart compression & optimization
+▪️ Instagram cookies & private access
 
-{Icons.FIRE} <b>أرسل رابط الفيديو الآن وابدأ التحميل!</b>
+🎯 <b>READY TO START?</b>
+Just send any video link and watch the magic happen!
+
+✨ <i>Experience the future of video downloading...</i> ✨
         """
     
     @staticmethod
@@ -142,85 +217,218 @@ class InteractiveMessages:
         }.get(platform, Icons.VIDEO)
         
         return f"""
-{Icons.PROCESSING} <b>جارٍ المعالجة...</b>
+{Icons.PROCESSING} <b>Processing...</b>
 
-{platform_icon} <b>المنصة:</b> {platform.title()}
-{Icons.LIGHTNING} <b>حالة التحليل:</b> جارٍ استخراج معلومات الفيديو
+{platform_icon} <b>Platform:</b> {platform.title()}
+{Icons.LIGHTNING} <b>Status:</b> Extracting video information
 
 {animated_progress}
 
-{Icons.MAGIC} <i>يتم تحضير الفيديو بجودة عالية لك...</i>
+{Icons.MAGIC} <i>Preparing high-quality video for you...</i>
         """
     
     @staticmethod
-    def get_download_message(video_title: str, progress_bar: str, speed: str, eta: str) -> str:
-        """Animated download progress message"""
-        downloading_icon = Icons.DOWNLOADING_FRAMES[int(time.time() * 2) % len(Icons.DOWNLOADING_FRAMES)]
+    def get_download_message(video_title: str, progress_bar: str, speed: str, eta: str, 
+                           percentage: float = 0, current_size: str = "", total_size: str = "",
+                           instant_speed: str = "", speed_trend: str = "stable") -> str:
+        """Ultra-modern real-time animated download progress message"""
+        frame = int(time.time() * 4) % 8  # Faster animation
+        
+        # Dynamic downloading animation based on real percentage
+        download_states = [
+            "⬇️ INITIALIZING", "📡 CONNECTING", "🔄 BUFFERING", "📥 DOWNLOADING",
+            "⚡ ACCELERATING", "🚀 TURBO MODE", "💨 ULTRA SPEED", "🔥 MAX POWER"
+        ]
+        
+        # Status based on real-time percentage
+        if percentage < 5:
+            status = download_states[0]
+        elif percentage < 15:
+            status = download_states[1]
+        elif percentage < 30:
+            status = download_states[2]
+        elif percentage < 50:
+            status = download_states[3]
+        elif percentage < 70:
+            status = download_states[4]
+        elif percentage < 85:
+            status = download_states[5]
+        elif percentage < 95:
+            status = download_states[6]
+        else:
+            status = download_states[7]
+        
+        # Real-time speed indicators with trend
+        speed_indicators = {
+            'increasing': ['📈', '🚀', '⚡', '💫'],
+            'decreasing': ['📉', '🐌', '⏳', '😴'],
+            'stable': ['📊', '⚡', '🔄', '💨'],
+            'unknown': ['❓', '🔍', '📊', '⚡']
+        }
+        
+        current_indicators = speed_indicators.get(speed_trend, speed_indicators['stable'])
+        speed_icon = current_indicators[frame % len(current_indicators)]
+        
+        # Progress percentage with visual feedback
+        progress_visual = "▰" * int(percentage / 5) + "▱" * (20 - int(percentage / 5))
+        
+        # Real-time counters
+        size_info = f"({current_size}/{total_size})" if current_size and total_size else ""
+        instant_info = f"📶 <b>NOW:</b> {instant_speed}" if instant_speed else ""
         
         return f"""
-{downloading_icon} <b>جارٍ التحميل...</b>
+╔═════════════════════════════════════════════════╗
+║                  {status}                  ║
+╠═════════════════════════════════════════════════╣
+║                                                 ║
+║ 🎬 <b>VIDEO:</b> {video_title[:40]}{'...' if len(video_title) > 40 else ''}
+║                                                 ║
+║ {progress_bar}
+║ 📏 {progress_visual} {percentage:.1f}%
+║                                                 ║
+║ {speed_icon} <b>AVG SPEED:</b> {speed}
+║ {instant_info}
+║ ⏱️ <b>TIME LEFT:</b> {eta}
+║ 📊 <b>SIZE:</b> {size_info}
+║ 📈 <b>TREND:</b> {speed_trend.title()}
+║                                                 ║
+╚═════════════════════════════════════════════════╝
 
-{Icons.VIDEO} <b>الفيديو:</b> {video_title}
-
-{progress_bar}
-
-{Icons.LIGHTNING} <b>السرعة:</b> {speed}
-{Icons.PROCESSING} <b>الوقت المتبقي:</b> {eta}
-
-{Icons.SPARKLES} <i>التحميل جارٍ بأقصى سرعة...</i>
+💡 <i>Real-time optimization in progress...</i>
+⚡ <i>Ultra-fast parallel downloading active...</i>
+🎯 <i>ETA calculated using smart algorithms...</i>
         """
     
     @staticmethod
-    def get_upload_message(video_title: str, progress_bar: str, speed: str) -> str:
-        """Animated upload progress message"""
-        uploading_icon = Icons.UPLOADING_FRAMES[int(time.time() * 2) % len(Icons.UPLOADING_FRAMES)]
+    def get_upload_message(video_title: str, progress_bar: str, speed: str, 
+                         percentage: float = 0, current_size: str = "", total_size: str = "",
+                         eta: str = "", instant_speed: str = "", speed_trend: str = "stable") -> str:
+        """Ultra-modern real-time animated upload progress message"""
+        frame = int(time.time() * 4) % 8  # Faster animation for uploads
+        
+        # Dynamic upload states based on real percentage
+        upload_states = [
+            "📤 PREPARING", "🔗 CONNECTING", "📡 HANDSHAKE", "📤 UPLOADING",
+            "🚀 ACCELERATING", "⚡ TURBO UPLOAD", "💨 BLAZING FAST", "🔥 MAXIMUM SPEED"
+        ]
+        
+        # Real-time status
+        if percentage < 5:
+            status = upload_states[0]
+        elif percentage < 15:
+            status = upload_states[1]
+        elif percentage < 25:
+            status = upload_states[2]
+        elif percentage < 50:
+            status = upload_states[3]
+        elif percentage < 70:
+            status = upload_states[4]
+        elif percentage < 85:
+            status = upload_states[5]
+        elif percentage < 95:
+            status = upload_states[6]
+        else:
+            status = upload_states[7]
+        
+        # Upload-specific animations
+        upload_indicators = {
+            'increasing': ['🚀', '📈', '⚡', '💫'],
+            'decreasing': ['🐌', '📉', '⏳', '😅'],
+            'stable': ['📤', '💨', '🔄', '⚡'],
+            'unknown': ['❓', '📡', '🔍', '📤']
+        }
+        
+        current_indicators = upload_indicators.get(speed_trend, upload_indicators['stable'])
+        upload_icon = current_indicators[frame % len(current_indicators)]
+        
+        # Progress visualization for uploads
+        upload_visual = "🟦" * int(percentage / 5) + "⬜" * (20 - int(percentage / 5))
+        
+        # Size and time info
+        size_info = f"({current_size}/{total_size})" if current_size and total_size else ""
+        instant_info = f"📶 <b>NOW:</b> {instant_speed}" if instant_speed else ""
+        eta_info = f"⏱️ <b>TIME LEFT:</b> {eta}" if eta else ""
         
         return f"""
-{uploading_icon} <b>جارٍ الرفع...</b>
+╔═════════════════════════════════════════════════╗
+║                  {status}                  ║
+╠═════════════════════════════════════════════════╣
+║                                                 ║
+║ 🎬 <b>VIDEO:</b> {video_title[:40]}{'...' if len(video_title) > 40 else ''}
+║                                                 ║
+║ {progress_bar}
+║ 📤 {upload_visual} {percentage:.1f}%
+║                                                 ║
+║ {upload_icon} <b>AVG SPEED:</b> {speed}
+║ {instant_info}
+║ {eta_info}
+║ 📊 <b>SIZE:</b> {size_info}
+║ 📈 <b>TREND:</b> {speed_trend.title()}
+║                                                 ║
+╚═════════════════════════════════════════════════╝
 
-{Icons.VIDEO} <b>الفيديو:</b> {video_title}
-
-{progress_bar}
-
-{Icons.ROCKET} <b>سرعة الرفع:</b> {speed}
-
-{Icons.FIRE} <i>يتم رفع الفيديو بتقنية فائقة السرعة...</i>
+🚀 <i>Ultra-fast Telethon upload technology...</i>
+⚡ <i>Optimized chunking for maximum speed...</i>
+🎯 <i>Smart ETA calculation in real-time...</i>
         """
     
     @staticmethod
-    def get_success_message(video_title: str, file_size: str, total_time: str) -> str:
-        """Animated success message"""
-        success_icon = Icons.SUCCESS_FRAMES[int(time.time()) % len(Icons.SUCCESS_FRAMES)]
+    def get_success_message(video_title: str, file_size: str, total_time: str, avg_speed: str = "") -> str:
+        """Epic animated success message with celebration"""
+        frame = int(time.time() * 2) % 6
+        
+        # Celebration animations
+        celebrations = ['🎉', '🎊', '✨', '🏆', '🎯', '💯']
+        party_effects = ['🥳', '🎈', '🎁', '🌟', '💫', '🔥']
+        
+        celebration = celebrations[frame]
+        party = party_effects[frame]
         
         return f"""
-{success_icon} <b>تم التحميل بنجاح!</b>
+╔═══════════════════════════════════════════╗
+║          {celebration} SUCCESS! {celebration}          ║
+║                                           ║
+║      🏆 DOWNLOAD COMPLETED! 🏆      ║
+║           {party} PERFECT! {party}           ║
+╚═══════════════════════════════════════════╝
 
-{Icons.VIDEO} <b>الفيديو:</b> {video_title}
-{Icons.FILE} <b>حجم الملف:</b> {file_size}
-{Icons.PROCESSING} <b>وقت التحميل:</b> {total_time}
+📋 <b>DOWNLOAD SUMMARY:</b>
+┌─────────────────────────────────────────┐
+│ 🎬 <b>Video:</b> {video_title[:30]}{'...' if len(video_title) > 30 else ''}
+│ 📁 <b>Size:</b> {file_size}
+│ ⏱️ <b>Time:</b> {total_time}
+{'│ ⚡ <b>Speed:</b> ' + avg_speed if avg_speed else ''}
+│ ✅ <b>Status:</b> Ready to Watch!
+└─────────────────────────────────────────┘
 
-{Icons.PARTY} <b>الفيديو جاهز للمشاهدة!</b>
-{Icons.THUMBS_UP} <b>شكراً لاستخدام البوت!</b>
+🎯 <b>WHAT'S NEXT?</b>
+▫️ Your video is ready in the chat above
+▫️ High quality and optimized for viewing
+▫️ Send another link for more downloads
 
-{Icons.MAGIC} <i>أرسل رابطاً آخر لتحميل المزيد...</i>
+🌟 <b>RATE YOUR EXPERIENCE:</b>
+Did we exceed your expectations? Share feedback!
+
+🚀 <i>Thanks for choosing Ultra Video Downloader!</i>
+💫 <i>Send another link to continue the magic...</i>
         """
     
     @staticmethod
     def get_error_message(error_type: str, suggestion: str = "") -> str:
         """Animated error message with helpful suggestions"""
         return f"""
-{Icons.ERROR} <b>حدث خطأ في التحميل</b>
+{Icons.ERROR} <b>Download Error Occurred</b>
 
-{Icons.WARNING} <b>نوع الخطأ:</b> {error_type}
+{Icons.WARNING} <b>Error Type:</b> {error_type}
 
-{Icons.INFO} <b>الحلول المقترحة:</b>
-• {Icons.REFRESH} جرب مرة أخرى
-• {Icons.CHECKMARK} تأكد من صحة الرابط
-• {Icons.NETWORK} تحقق من الاتصال بالإنترنت
+{Icons.INFO} <b>Suggested Solutions:</b>
+• {Icons.REFRESH} Try again
+• {Icons.CHECK} Make sure the link is correct
+• {Icons.NETWORK} Check internet connection
 
 {suggestion}
 
-{Icons.HEART} <b>نحن هنا لمساعدتك!</b>
+{Icons.HEART} <b>We're here to help!</b>
         """
 
 # Global animator instance

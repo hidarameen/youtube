@@ -84,18 +84,19 @@ class TelethonManager:
             settings.API_ID,
             settings.API_HASH,
             connection_retries=settings.CONNECTION_RETRIES,
-            retry_delay=1,  # Faster retry
+            retry_delay=0.5,  # Ultra-fast retry
             timeout=settings.REQUEST_TIMEOUT,
-            request_retries=2,  # Reduced for faster failures
-            flood_sleep_threshold=30,  # Reduced flood threshold
-            device_model="VideoBot Ultra",
-            system_version="2.0",
-            app_version="2.0",
+            request_retries=3,  # Balanced retries
+            flood_sleep_threshold=15,  # Aggressive flood threshold
+            device_model="VideoBot Ultra Pro",
+            system_version="3.0",
+            app_version="3.0",
             lang_code="en",
             system_lang_code="en",
-            # Additional optimizations
+            # Ultra-performance optimizations
             auto_reconnect=True,
-            sequential_updates=False  # Allow parallel updates
+            sequential_updates=False,  # Allow parallel updates
+            receive_updates=False  # Disable updates for upload-only client
         )
     
     async def _connect_and_auth(self):
@@ -182,20 +183,21 @@ class TelethonManager:
         """Upload file with progress tracking and optimization"""
         
         if self.fast_telethon_available and settings.USE_FAST_TELETHON:
-            # Use FastTelethon for enhanced speed with optimized workers
+            # Use FastTelethon with ultra-optimized settings
             return await fast_upload(
                 self.client,
                 file_path,
                 progress_callback=progress_callback,
-                workers=getattr(settings, 'UPLOAD_WORKERS', 8),  # Use multiple workers
+                workers=getattr(settings, 'UPLOAD_WORKERS', 16),  # More workers for speed
                 part_size_kb=512  # 512KB parts (max allowed)
             )
         else:
-            # Use standard Telethon upload with optimized chunk size
+            # Use standard Telethon upload with ultra-optimized settings
             return await self.client.upload_file(
                 file_path,
                 progress_callback=progress_callback,
-                part_size_kb=512  # 512KB parts (max allowed)
+                part_size_kb=512,  # 512KB parts (max allowed)
+                file_size=file_size if file_size else None  # Provide file size for optimization
             )
     
     async def _prepare_attributes(self, file_path: str, video_metadata: Optional[Dict] = None):
