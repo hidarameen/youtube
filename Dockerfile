@@ -32,10 +32,10 @@ RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy dependency files
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 
 # Install Python dependencies with optimizations
-RUN uv sync --frozen --no-cache --no-dev && \
+RUN uv pip install --no-cache-dir -r pyproject.toml && \
     uv pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Production stage
@@ -76,7 +76,7 @@ RUN mkdir -p temp logs \
 USER appuser
 
 # Verify all dependencies are installed
-RUN python -c "import aiohttp, asyncpg, loguru, PIL, psutil, psycopg2, magic, telegram, redis, requests, sqlalchemy, telethon, uvloop, yt_dlp; print('âœ… All dependencies installed successfully')"
+RUN /opt/venv/bin/python -c "import aiohttp, asyncpg, loguru, PIL, psutil, psycopg2, magic, telegram, redis, requests, sqlalchemy, telethon, uvloop, yt_dlp; print('✅ All dependencies installed successfully')"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
