@@ -40,7 +40,7 @@ class AuthMiddleware:
     
     async def check_access(self, update: Update) -> bool:
         """
-        Check if user has access to the bot
+        Check if user has access to the bot (optimized)
         
         Args:
             update: Telegram update object
@@ -53,18 +53,16 @@ class AuthMiddleware:
             chat = update.effective_chat
             
             if not user or not chat:
-                logger.warning("❌ Access denied: No user or chat information")
                 return False
             
             user_id = user.id
             chat_id = chat.id
             
-            # Check cache first for performance
+            # Fast memory cache check first
             if user_id in self.authorized_users_cache:
                 return True
             
             if user_id in self.unauthorized_users_cache:
-                logger.debug(f"❌ Access denied for cached unauthorized user {user_id}")
                 return False
             
             # Admin users always have access

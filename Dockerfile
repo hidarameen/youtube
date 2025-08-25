@@ -34,8 +34,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN uv sync --frozen --no-cache
+# Install Python dependencies with optimizations
+RUN uv sync --frozen --no-cache --no-dev && \
+    uv pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Production stage
 FROM python:3.11-slim-bullseye as production
@@ -73,6 +74,9 @@ RUN mkdir -p temp logs \
 
 # Switch to non-root user
 USER appuser
+
+# Verify all dependencies are installed
+RUN python -c "import aiohttp, asyncpg, loguru, PIL, psutil, psycopg2, magic, telegram, redis, requests, sqlalchemy, telethon, uvloop, yt_dlp; print('✅ All dependencies installed successfully')"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -27,37 +27,37 @@ logger = logging.getLogger(__name__)
 async def startup_checks():
     """Perform startup checks and initialization"""
     logger.info("🚀 Starting Ultra High-Performance Video Downloader Bot")
-    
+
     # Verify environment variables
     settings = Settings()
     if not settings.validate():
         logger.error("❌ Configuration validation failed")
         sys.exit(1)
-    
+
     # Create necessary directories
     os.makedirs("temp", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
-    
+
     # Clean up any leftover temporary files
     await cleanup_temp_files()
-    
+
     logger.info("✅ Startup checks completed successfully")
 
 async def shutdown_cleanup():
     """Cleanup resources on shutdown"""
     logger.info("🛑 Shutting down bot...")
-    
+
     # Cleanup temporary files
     await cleanup_temp_files()
-    
+
     # Close database connections
     db_manager = DatabaseManager()
     await db_manager.close_all_connections()
-    
+
     # Close cache connections
     cache_manager = CacheManager()
     await cache_manager.close()
-    
+
     logger.info("✅ Shutdown cleanup completed")
 
 async def main():
@@ -65,15 +65,15 @@ async def main():
     try:
         # Startup initialization
         await startup_checks()
-        
+
         # Initialize and start the bot
         bot = VideoDownloaderBot()
         await bot.initialize()
-        
+
         # Start the bot
         logger.info("🤖 Bot is now running...")
         await bot.start()
-        
+
     except KeyboardInterrupt:
         logger.info("📱 Received keyboard interrupt")
     except Exception as e:
@@ -83,13 +83,21 @@ async def main():
         await shutdown_cleanup()
 
 if __name__ == "__main__":
-    # Check if event loop is already running (Replit environment)
+    # Run the bot using the main function
     try:
+        # Check if there's already an event loop running
         loop = asyncio.get_running_loop()
-        logger.info("🔄 Using existing event loop")
-        # Schedule the main coroutine
-        asyncio.create_task(main())
+        # If we're in Replit or Jupyter, apply nest_asyncio
+        import nest_asyncio
+        nest_asyncio.apply()
+        # Create a task for the main function
+        task = asyncio.create_task(main())
+        # Keep the bot running
+        try:
+            asyncio.run_coroutine_threadsafe(task, loop)
+        except:
+            # Alternative approach
+            asyncio.ensure_future(main())
     except RuntimeError:
-        # No running loop, create new one
-        logger.info("🔄 Creating new event loop")
+        # No event loop running, create a new one
         asyncio.run(main())

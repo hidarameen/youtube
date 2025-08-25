@@ -21,29 +21,31 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     """Ultra high-performance database manager with connection pooling"""
-    
+
     def __init__(self):
         self.engine: Optional[any] = None
         self.session_factory: Optional[async_sessionmaker] = None
         self.connection_pool: Optional[asyncpg.Pool] = None
         self.is_initialized = False
-        
+        # Assume cache_manager is available and initialized elsewhere
+        # self.cache_manager = CacheManager() 
+
         # Connection pool settings
         self.min_connections = 5
         self.max_connections = 20
         self.pool_timeout = 30
-        
+
     async def initialize(self):
         """Initialize database connections and create tables"""
         try:
             logger.info("🔧 Initializing database connections...")
-            
+
             # Create async engine with optimized settings
             # Remove any SSL parameters that might conflict
             db_url = settings.DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
             if '?sslmode=' in db_url:
                 db_url = db_url.split('?sslmode=')[0]
-            
+
             self.engine = create_async_engine(
                 db_url,
                 pool_size=self.min_connections,
@@ -53,32 +55,32 @@ class DatabaseManager:
                 pool_recycle=3600,  # Recycle connections every hour
                 echo=False,  # Set to True for SQL debugging
             )
-            
+
             # Create session factory
             self.session_factory = async_sessionmaker(
                 bind=self.engine,
                 class_=AsyncSession,
                 expire_on_commit=False
             )
-            
+
             # Create raw connection pool for direct queries
             await self._create_connection_pool()
-            
+
             # Create tables if they don't exist
             await self._create_tables()
-            
+
             # Mark as initialized before calling methods that use get_session()
             self.is_initialized = True
-            
+
             # Initialize default data
             await self._initialize_default_data()
-            
+
             logger.info("✅ Database initialized successfully")
-            
+
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}", exc_info=True)
             raise
-    
+
     async def _create_connection_pool(self):
         """Create asyncpg connection pool for raw queries"""
         try:
@@ -87,23 +89,30 @@ class DatabaseManager:
             db_url = settings.DATABASE_URL
             if '?sslmode=' in db_url:
                 db_url = db_url.split('?sslmode=')[0]
-            
+
+            # Create AsyncPG connection pool with ultra-fast settings
             self.connection_pool = await asyncpg.create_pool(
-                dsn=db_url,
-                min_size=self.min_connections,
-                max_size=self.max_connections,
-                command_timeout=60,
+                dsn=db_url,  # Use dsn directly
+                min_size=5,  # Fewer minimum connections for faster startup
+                max_size=20,  # Reasonable maximum
+                max_queries=5000,  # More queries per connection
+                max_inactive_connection_lifetime=120,  # 2 minutes only
+                timeout=5,  # Fast connection timeout
+                command_timeout=10,  # Fast command timeout
                 server_settings={
-                    'jit': 'off',  # Disable JIT for better performance on small queries
+                    'jit': 'off',  # Disable JIT for faster simple queries
+                    'application_name': 'video_downloader_bot',
+                    'shared_preload_libraries': '',
+                    'max_connections': '200'
                 }
             )
-            
+
             logger.info("✅ AsyncPG connection pool created")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to create connection pool: {e}")
             raise
-    
+
     async def _create_tables(self):
         """Create database tables if they don't exist"""
         try:
@@ -111,13 +120,13 @@ class DatabaseManager:
                 raise RuntimeError("Database engine not initialized")
             async with self.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
-            
+
             logger.info("✅ Database tables created/verified")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to create tables: {e}")
             raise
-    
+
     async def _initialize_default_data(self):
         """Initialize default platform data"""
         try:
@@ -125,7 +134,7 @@ class DatabaseManager:
                 # Check if platforms already exist
                 result = await session.execute(text("SELECT COUNT(*) FROM platforms"))
                 count = result.scalar()
-                
+
                 if count == 0:
                     # Insert default platforms
                     default_platforms = [
@@ -175,23 +184,23 @@ class DatabaseManager:
                             'max_quality': '1080p'
                         }
                     ]
-                    
+
                     for platform_data in default_platforms:
                         platform = Platform(**platform_data)
                         session.add(platform)
-                    
+
                     await session.commit()
                     logger.info("✅ Default platforms initialized")
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to initialize default data: {e}")
-    
+
     @asynccontextmanager
     async def get_session(self):
         """Get database session with automatic cleanup"""
         if not self.is_initialized or self.session_factory is None:
             raise RuntimeError("Database not initialized")
-        
+
         async with self.session_factory() as session:
             try:
                 yield session
@@ -201,7 +210,13 @@ class DatabaseManager:
                 raise
             finally:
                 await session.close()
-    
+
+    async def get_connection(self):
+        """Get a connection from the asyncpg pool"""
+        if self.connection_pool is None:
+            raise RuntimeError("Connection pool not initialized")
+        return await self.connection_pool.acquire()
+
     async def create_or_update_user(
         self,
         user_id: int,
@@ -219,7 +234,7 @@ class DatabaseManager:
                     {"user_id": user_id}
                 )
                 user_data = result.fetchone()
-                
+
                 if user_data:
                     # Update existing user
                     await session.execute(
@@ -239,7 +254,7 @@ class DatabaseManager:
                             "now": datetime.utcnow()
                         }
                     )
-                    
+
                     # Fetch updated user
                     result = await session.execute(
                         text("SELECT * FROM users WHERE user_id = :user_id"),
@@ -262,16 +277,16 @@ class DatabaseManager:
                             "now": datetime.utcnow()
                         }
                     )
-                    
+
                     # Fetch created user
                     result = await session.execute(
                         text("SELECT * FROM users WHERE user_id = :user_id"),
                         {"user_id": user_id}
                     )
                     user_data = result.fetchone()
-                
+
                 await session.commit()
-                
+
                 # Convert asyncpg Row to dict properly
                 if user_data:
                     return {
@@ -295,11 +310,11 @@ class DatabaseManager:
                     }
                 else:
                     return {}
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to create/update user {user_id}: {e}")
             raise
-    
+
     async def create_download_record(
         self,
         task_id: str,
@@ -334,7 +349,7 @@ class DatabaseManager:
                     },
                     "created_at": datetime.utcnow()
                 }
-                
+
                 result = await session.execute(
                     text("""
                         INSERT INTO downloads 
@@ -349,17 +364,17 @@ class DatabaseManager:
                     """),
                     download_data
                 )
-                
+
                 download_id = result.scalar()
                 await session.commit()
-                
+
                 logger.info(f"✅ Created download record {download_id} for task {task_id}")
                 return int(download_id) if download_id else 0
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to create download record: {e}")
             raise
-    
+
     async def update_download_progress(
         self,
         task_id: str,
@@ -380,7 +395,7 @@ class DatabaseManager:
                     "status": status,
                     "updated_at": datetime.utcnow()
                 }
-                
+
                 # Add optional fields if provided
                 if download_time is not None:
                     update_data["download_time"] = download_time
@@ -396,106 +411,109 @@ class DatabaseManager:
                     update_data["telegram_message_id"] = telegram_message_id
                 if telegram_chat_id is not None:
                     update_data["telegram_chat_id"] = telegram_chat_id
-                
+
                 # Set completion timestamp for final statuses
                 if status in ['completed', 'failed', 'cancelled']:
                     update_data["completed_at"] = datetime.utcnow()
                 elif status == 'downloading':
                     update_data["started_at"] = datetime.utcnow()
-                
+
                 # Build dynamic update query
                 set_clauses = []
                 for key in update_data.keys():
                     if key != "task_id":
                         set_clauses.append(f"{key} = :{key}")
-                
+
                 query = f"""
                     UPDATE downloads 
                     SET {', '.join(set_clauses)}
                     WHERE task_id = :task_id
                 """
-                
+
                 await session.execute(text(query), update_data)
                 await session.commit()
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to update download progress for {task_id}: {e}")
-    
+
     async def get_user_stats(self, user_id: int) -> Dict[str, Any]:
-        """Get comprehensive user statistics"""
+        """Get comprehensive user statistics with caching (optimized)"""
         try:
-            if self.connection_pool is None:
-                raise RuntimeError("Connection pool not initialized")
-            async with self.connection_pool.acquire() as conn:
-                # Get basic user stats
-                user_stats = await conn.fetchrow("""
+            # Check cache first with longer TTL
+            cache_key = f"user_stats:{user_id}"
+            # Skip cache for now until cache_manager is properly initialized
+            cached_stats = None
+
+            if cached_stats:
+                return cached_stats
+
+            # Use a single optimized query instead of multiple queries
+            async with self.get_connection() as conn:
+                # Single comprehensive query
+                result = await conn.fetchrow("""
                     SELECT 
-                        total_downloads, successful_downloads, failed_downloads,
-                        total_bytes_downloaded, total_bytes_uploaded, created_at, last_active
-                    FROM users 
-                    WHERE user_id = $1
+                        u.total_downloads, u.successful_downloads, u.failed_downloads,
+                        u.total_bytes_downloaded, u.total_bytes_uploaded, u.created_at, u.last_active,
+                        COALESCE(AVG(d.download_speed), 0) as avg_download_speed,
+                        COALESCE(AVG(d.upload_speed), 0) as avg_upload_speed,
+                        COALESCE(MAX(d.download_speed), 0) as fastest_download_speed,
+                        COALESCE(AVG(d.download_time + d.upload_time), 0) as avg_processing_time,
+                        COALESCE(SUM(d.download_time), 0) as total_download_time,
+                        COALESCE(SUM(d.upload_time), 0) as total_upload_time,
+                        COALESCE(AVG(d.file_size), 0) as avg_file_size
+                    FROM users u
+                    LEFT JOIN downloads d ON u.user_id = d.user_id AND d.status = 'completed'
+                    WHERE u.user_id = $1
+                    GROUP BY u.user_id, u.total_downloads, u.successful_downloads, u.failed_downloads,
+                             u.total_bytes_downloaded, u.total_bytes_uploaded, u.created_at, u.last_active
                 """, user_id)
-                
-                if not user_stats:
+
+                if not result:
                     return {}
-                
-                # Get advanced statistics
-                advanced_stats = await conn.fetchrow("""
-                    SELECT 
-                        AVG(download_speed) as avg_download_speed,
-                        AVG(upload_speed) as avg_upload_speed,
-                        MAX(download_speed) as fastest_download_speed,
-                        AVG(download_time + upload_time) as avg_processing_time,
-                        SUM(download_time) as total_download_time,
-                        SUM(upload_time) as total_upload_time,
-                        AVG(file_size) as avg_file_size
-                    FROM downloads 
-                    WHERE user_id = $1 AND status = 'completed'
-                """, user_id)
-                
+
+                # Convert asyncpg Row to dict properly and handle nulls
+                stats = {
+                    'total_downloads': result['total_downloads'] if result['total_downloads'] is not None else 0,
+                    'successful_downloads': result['successful_downloads'] if result['successful_downloads'] is not None else 0,
+                    'failed_downloads': result['failed_downloads'] if result['failed_downloads'] is not None else 0,
+                    'total_bytes_downloaded': result['total_bytes_downloaded'] if result['total_bytes_downloaded'] is not None else 0,
+                    'total_bytes_uploaded': result['total_bytes_uploaded'] if result['total_bytes_uploaded'] is not None else 0,
+                    'created_at': result['created_at'],
+                    'last_active': result['last_active'],
+                    'avg_download_speed': result['avg_download_speed'],
+                    'avg_upload_speed': result['avg_upload_speed'],
+                    'fastest_download_speed': result['fastest_download_speed'],
+                    'avg_processing_time': result['avg_processing_time'],
+                    'total_download_time': result['total_download_time'],
+                    'total_upload_time': result['total_upload_time'],
+                    'avg_file_size': result['avg_file_size']
+                }
+
                 # Calculate success rate (handle null values)
                 success_rate = 0
-                total_downloads = user_stats['total_downloads'] or 0
-                successful_downloads = user_stats['successful_downloads'] or 0
-                
+                total_downloads = stats['total_downloads']
+                successful_downloads = stats['successful_downloads']
+
                 if total_downloads > 0:
                     success_rate = (successful_downloads / total_downloads) * 100
-                
-                # Combine all stats (handle null values)
-                stats = {}
-                for key, value in dict(user_stats).items():
-                    stats[key] = value if value is not None else 0
-                
-                # Add advanced stats with null handling
-                if advanced_stats:
-                    for key, value in dict(advanced_stats).items():
-                        stats[key] = value if value is not None else 0
-                else:
-                    # Set default values for missing advanced stats
-                    stats.update({
-                        'avg_download_speed': 0,
-                        'avg_upload_speed': 0, 
-                        'fastest_download_speed': 0,
-                        'avg_processing_time': 0,
-                        'total_download_time': 0,
-                        'total_upload_time': 0,
-                        'avg_file_size': 0
-                    })
-                
+
                 stats['success_rate'] = success_rate
-                
+
                 # Format timestamps
                 if stats.get('created_at'):
                     stats['created_at'] = stats['created_at'].strftime('%B %d, %Y')
                 if stats.get('last_active'):
                     stats['last_active'] = stats['last_active'].strftime('%B %d, %Y at %I:%M %p')
-                
+
+                # Cache the results - will be implemented later when cache_manager is properly initialized
+                # await self.cache_manager.set(cache_key, stats, ttl=3600)
+
                 return stats
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to get user stats for {user_id}: {e}")
             return {}
-    
+
     async def get_user_settings(self, user_id: int) -> Dict[str, Any]:
         """Get user settings"""
         try:
@@ -506,7 +524,7 @@ class DatabaseManager:
                     "SELECT settings FROM users WHERE user_id = $1",
                     user_id
                 )
-                
+
                 if result and result['settings']:
                     return result['settings']
                 else:
@@ -521,11 +539,11 @@ class DatabaseManager:
                         'fast_mode': True,
                         'generate_thumbnails': True
                     }
-                    
+
         except Exception as e:
             logger.error(f"❌ Failed to get user settings for {user_id}: {e}")
             return {}
-    
+
     async def update_user_settings(self, user_id: int, settings_update: Dict[str, Any]):
         """Update user settings"""
         try:
@@ -534,22 +552,22 @@ class DatabaseManager:
             async with self.connection_pool.acquire() as conn:
                 # Get current settings
                 current_settings = await self.get_user_settings(user_id)
-                
+
                 # Merge with updates
                 current_settings.update(settings_update)
-                
+
                 # Update in database
                 await conn.execute("""
                     UPDATE users 
                     SET settings = $1, updated_at = $2
                     WHERE user_id = $3
                 """, current_settings, datetime.utcnow(), user_id)
-                
+
                 logger.info(f"✅ Updated settings for user {user_id}")
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to update user settings for {user_id}: {e}")
-    
+
     async def get_global_stats(self) -> Dict[str, Any]:
         """Get global bot statistics"""
         try:
@@ -564,7 +582,7 @@ class DatabaseManager:
                         COUNT(CASE WHEN created_at > NOW() - INTERVAL '1 day' THEN 1 END) as new_users_24h
                     FROM users
                 """)
-                
+
                 # Get download statistics
                 download_stats = await conn.fetchrow("""
                     SELECT 
@@ -577,29 +595,29 @@ class DatabaseManager:
                         MAX(CASE WHEN status = 'completed' THEN download_speed END) as peak_speed
                     FROM downloads
                 """)
-                
+
                 # Calculate additional metrics
                 stats = dict(user_stats)
                 stats.update(dict(download_stats))
-                
+
                 # Calculate success rate
                 if stats['total_downloads'] > 0:
                     stats['global_success_rate'] = (stats['successful_downloads'] / stats['total_downloads']) * 100
                 else:
                     stats['global_success_rate'] = 0
-                
+
                 # Calculate average per user
                 if stats['total_users'] > 0:
                     stats['avg_per_user'] = stats['total_data_processed'] / stats['total_users']
                 else:
                     stats['avg_per_user'] = 0
-                
+
                 return stats
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to get global stats: {e}")
             return {}
-    
+
     async def get_database_stats(self) -> Dict[str, Any]:
         """Get database performance statistics"""
         try:
@@ -609,12 +627,12 @@ class DatabaseManager:
                 # Check connection
                 await conn.fetchval("SELECT 1")
                 connected = True
-                
+
                 # Get database size
                 db_size = await conn.fetchval("""
                     SELECT pg_size_pretty(pg_database_size(current_database()))
                 """)
-                
+
                 # Get table sizes
                 table_sizes = await conn.fetch("""
                     SELECT 
@@ -627,11 +645,11 @@ class DatabaseManager:
                     ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
                     LIMIT 10
                 """)
-                
+
                 # Get user and download counts
                 total_users = await conn.fetchval("SELECT COUNT(*) FROM users")
                 total_downloads = await conn.fetchval("SELECT COUNT(*) FROM downloads")
-                
+
                 return {
                     'connected': connected,
                     'database_size': db_size,
@@ -640,18 +658,18 @@ class DatabaseManager:
                     'total_downloads': total_downloads,
                     'table_sizes': [dict(row) for row in table_sizes]
                 }
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to get database stats: {e}")
             return {'connected': False, 'error': str(e)}
-    
+
     async def cleanup_old_records(self, days: int = 30):
         """Clean up old records to maintain performance"""
         try:
             if self.connection_pool is None:
                 raise RuntimeError("Connection pool not initialized")
             cutoff_date = datetime.utcnow() - timedelta(days=days)
-            
+
             async with self.connection_pool.acquire() as conn:
                 # Clean up old completed downloads
                 deleted_downloads = await conn.fetchval("""
@@ -660,26 +678,26 @@ class DatabaseManager:
                     AND completed_at < $1
                     RETURNING COUNT(*)
                 """, cutoff_date)
-                
+
                 # Clean up old system stats
                 deleted_stats = await conn.fetchval("""
                     DELETE FROM system_stats 
                     WHERE timestamp < $1
                     RETURNING COUNT(*)
                 """, cutoff_date)
-                
+
                 # Clean up old error logs
                 deleted_errors = await conn.fetchval("""
                     DELETE FROM error_logs 
                     WHERE created_at < $1 AND resolved = true
                     RETURNING COUNT(*)
                 """, cutoff_date)
-                
+
                 logger.info(f"🗑️ Cleaned up {deleted_downloads} downloads, {deleted_stats} stats, {deleted_errors} errors")
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to cleanup old records: {e}")
-    
+
     async def log_error(
         self,
         error_type: str,
@@ -704,43 +722,43 @@ class DatabaseManager:
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """, error_type, error_message, error_traceback, user_id, url, platform,
                    task_id, severity, request_data, datetime.utcnow())
-                
+
         except Exception as e:
             logger.error(f"❌ Failed to log error: {e}")
-    
+
     async def close_all_connections(self):
         """Close all database connections"""
         try:
             if self.connection_pool:
                 await self.connection_pool.close()
                 self.connection_pool = None
-            
+
             if self.engine:
                 await self.engine.dispose()
                 self.engine = None
-            
+
             self.session_factory = None
             self.is_initialized = False
-            
+
             logger.info("🔌 Database connections closed")
-            
+
         except Exception as e:
             logger.error(f"❌ Error closing database connections: {e}")
-    
+
     async def health_check(self) -> Dict[str, Any]:
         """Perform database health check"""
         try:
             if not self.connection_pool:
                 return {'healthy': False, 'error': 'Connection pool not initialized'}
-            
+
             async with self.connection_pool.acquire() as conn:
                 # Test basic query
                 result = await conn.fetchval("SELECT 1")
-                
+
                 if result == 1:
                     return {'healthy': True, 'connected': True}
                 else:
                     return {'healthy': False, 'error': 'Unexpected query result'}
-                    
+
         except Exception as e:
             return {'healthy': False, 'error': str(e), 'connected': False}

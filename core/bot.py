@@ -5,6 +5,7 @@ Handles initialization, routing, and high-level bot operations
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, Optional
 from telegram import Update
 from telegram.ext import (
@@ -142,15 +143,17 @@ class VideoDownloaderBot:
     
     async def _setup_application(self):
         """Setup Telegram Bot API application"""
-        # Create application with optimized settings
+        # Create application with ultra-fast settings
         builder = Application.builder()
         builder.token(settings.BOT_TOKEN)
         builder.concurrent_updates(True)
-        builder.pool_timeout(30)
-        builder.connect_timeout(30)
-        builder.read_timeout(30)
-        builder.write_timeout(30)
-        builder.get_updates_pool_timeout(1)
+        builder.pool_timeout(5)  # Ultra fast
+        builder.connect_timeout(3)  # Ultra fast
+        builder.read_timeout(3)  # Ultra fast
+        builder.write_timeout(3)  # Ultra fast
+        builder.get_updates_pool_timeout(0.1)  # Instant polling
+        builder.get_updates_read_timeout(2)  # Fast polling
+        builder.get_updates_connect_timeout(2)  # Fast connection
         
         self.application = builder.build()
         
@@ -202,23 +205,38 @@ class VideoDownloaderBot:
         logger.info("✅ All handlers registered")
     
     def _with_middleware(self, handler):
-        """Wrap handler with middleware"""
+        """Ultra-fast middleware wrapper"""
         async def wrapped_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            # Apply authentication middleware
-            if not await self.auth_middleware.check_access(update):
-                await update.effective_message.reply_text(
-                    "❌ Access denied. This bot is restricted to authorized groups only."
-                )
+            # Quick user validation
+            user = update.effective_user
+            if not user:
                 return
             
-            # Apply rate limiting middleware
-            if not await self.rate_limit_middleware.check_rate_limit(update):
-                await update.effective_message.reply_text(
-                    "⏳ Please wait a moment before sending another request."
-                )
-                return
+            user_id = user.id
+            current_time = time.time()
             
-            # Execute the actual handler
+            # In-memory auth cache for instant access
+            if not hasattr(self, '_auth_cache'):
+                self._auth_cache = {}
+            
+            # Check auth (cached in memory for 10 minutes)
+            if user_id not in self._auth_cache or (current_time - self._auth_cache[user_id]) > 600:
+                if not await self.auth_middleware.check_access(update):
+                    await update.effective_message.reply_text("❌ Access denied.")
+                    return
+                self._auth_cache[user_id] = current_time
+            
+            # Ultra-light rate limiting (in-memory only)
+            if not hasattr(self, '_last_requests'):
+                self._last_requests = {}
+            
+            last_request = self._last_requests.get(user_id, 0)
+            if current_time - last_request < 0.1:  # 100ms minimum only
+                return  # Silent rate limiting for ultra-fast UX
+            
+            self._last_requests[user_id] = current_time
+            
+            # Execute handler immediately
             try:
                 await handler(update, context)
             except Exception as e:

@@ -59,12 +59,9 @@ class MessageHandlers:
             # Import animations
             from utils.progress_animations import InteractiveMessages, progress_animator
             
-            # Send beautiful processing message with animation
-            progress_bar = progress_animator.get_animated_progress_bar(0, f"extract_{user.id}", "pulse")
-            processing_text = InteractiveMessages.get_processing_message(platform, progress_bar)
-            
+            # Send simple fast processing message
             processing_message = await message.reply_text(
-                processing_text,
+                f"🔄 معالجة الرابط...",
                 parse_mode=ParseMode.HTML
             )
             
@@ -87,10 +84,7 @@ class MessageHandlers:
 {Icons.SPARKLES} <i>Choose your preferred quality and format...</i>
                 """
                 
-                await processing_message.edit_text(success_text, parse_mode=ParseMode.HTML)
-                await asyncio.sleep(1.5)  # Show success animation
-                
-                # Generate video preview
+                # Generate video preview immediately
                 await self._send_video_preview(processing_message, video_info, text)
                 
             except Exception as e:

@@ -34,6 +34,12 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/video_bot")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
+    # Redis Configuration Details
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    
     # Performance Settings
     MAX_CONCURRENT_DOWNLOADS: int = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "5"))
     MAX_CONCURRENT_UPLOADS: int = int(os.getenv("MAX_CONCURRENT_UPLOADS", "5"))  # Increased for faster throughput
@@ -79,6 +85,15 @@ class Settings:
     # API Keys for enhanced platform support
     INSTAGRAM_ACCESS_TOKEN: str = os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
     FACEBOOK_ACCESS_TOKEN: str = os.getenv("FACEBOOK_ACCESS_TOKEN", "")
+    
+    # Instagram Cookies Configuration
+    INSTAGRAM_SESSIONID: str = os.getenv("INSTAGRAM_SESSIONID", "")
+    INSTAGRAM_CSRFTOKEN: str = os.getenv("INSTAGRAM_CSRFTOKEN", "")
+    
+    # YouTube Cookies Configuration
+    YOUTUBE_COOKIES: str = os.getenv("YOUTUBE_COOKIES", "YSC=S2HI9zX0Wec; PREF=tz=Asia.Riyadh; VISITOR_INFO1_LIVE=XokcjcRzkoQ")
+    YOUTUBE_SESSION_TOKEN: str = os.getenv("YOUTUBE_SESSION_TOKEN", "")
+    YOUTUBE_AUTH_TOKEN: str = os.getenv("YOUTUBE_AUTH_TOKEN", "")
     
     def validate(self) -> bool:
         """Validate critical configuration settings"""

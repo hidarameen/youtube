@@ -156,6 +156,10 @@ class TelethonManager:
                     file_path, progress_callback, file_size
                 )
                 
+                # Determine if this is a video file
+                filename = os.path.basename(file_path)
+                is_video_file = filename.lower().endswith(('.mp4', '.avi', '.mkv', '.mov', '.webm'))
+                
                 # Send the file
                 message = await self.client.send_file(
                     chat_id,
@@ -163,7 +167,7 @@ class TelethonManager:
                     caption=caption,
                     attributes=attributes,
                     thumb=thumbnail,
-                    force_document=file_size > 10 * 1024 * 1024,  # Force document for files > 10MB (faster)
+                    force_document=False,  # Always send as video/media, not as document
                     parse_mode='HTML'
                 )
                 
