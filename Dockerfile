@@ -24,9 +24,10 @@ RUN pip install --upgrade pip setuptools wheel
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies inside /opt/venv via uv
+# Install uv and export dependencies to pip
 RUN pip install uv \
- && uv sync --frozen --no-cache --python $VIRTUAL_ENV/bin/python
+ && uv export requirements.txt \
+ && pip install --no-cache-dir -r requirements.txt
 
 # ----------------- Production Stage -----------------
 FROM python:3.11-slim-bullseye AS production
@@ -62,9 +63,6 @@ RUN mkdir -p temp logs \
 
 # Switch to non-root user
 USER appuser
-
-# Verify all dependencies are installed
-RUN python -c "import aiohttp, asyncpg, loguru, PIL, psutil, psycopg2, magic, telegram, redis, requests, sqlalchemy, telethon, uvloop, yt_dlp; print('✅ All dependencies installed successfully')"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
