@@ -23,8 +23,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip setuptools wheel
 
 # Copy requirements (قم بإضافة جميع المكتبات في requirements.txt)
-COPY requirements.txt .
-
+COPY pyproject.toml uv.lock ./
+RUN pip install uv && uv sync --frozen --no-cache
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
